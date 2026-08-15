@@ -402,7 +402,23 @@ export function apply(ctx: RemctrlContext, config: RemctrlConfig = {}): void {
     // triggers would be a loop with a race in it.
     devices.load(scope.get().devices ?? config.devices)
 
-    const persist = (table: DeviceTable): void => { void scope.update({ devices: table }) }
+    // The mirror is allowed to fail; the PROCESS is not. `settings.update`
+    // rejects on a read-only provider, on a scope this fiber has already
+    // dropped, on a disk that would not take the write — and on this
+    // namespace's own `validate` above, which refuses a stored `bindHost` the
+    // machine has stopped holding, so a laptop whose Tailscale went down turns
+    // every later write into a rejection. The harness answers an unhandled
+    // rejection with `fatal load failure` and `exit(1)`, which would mean a
+    // phone pairing takes the whole agent host down with it. The store is
+    // authoritative in memory either way: what is lost is durability, and the
+    // right report for that is a line, not a crash.
+    const persist = (table: DeviceTable): void => {
+      void Promise.resolve(scope.update({ devices: table })).catch((error: unknown) => {
+        ctx.logger?.warn?.(
+          `omdsh-remctrl: the device table could not be mirrored into settings; pairings hold until restart: ${error instanceof Error ? error.message : String(error)}`,
+        )
+      })
+    }
     devices.setPersist(persist)
 
     const adopt = (next: RemctrlConfig): void => {

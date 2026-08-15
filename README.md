@@ -38,6 +38,27 @@ omdsh-remctrl: put Tailscale in front of it — `tailscale serve --bg --https=44
 omdsh-remctrl: no device is paired yet; pairing code 483212, good for 300s.
 ```
 
+### What it needs from a profile
+
+One harness service: `connection`, which carries the loopback control channel
+the desktop pairing panel calls. The web surface bundle composes it, so this row
+belongs in a profile that has a surface — the one the line above installs it
+into. cordis waits for an injected service forever and the boot audit fails the
+app for any entry left `pending`, so a headless profile, which composes no
+`connection`, must not carry this row: that is a dead boot rather than a quiet
+no-op.
+
+No service published by another plugin appears in this plugin's `inject`, and
+none is needed. There is no companion to install beside it and nothing here that
+goes dark because one is missing — the rule, and why it is a rule, is in
+[CONVENTIONS.md](https://github.com/omdsh-plugins/omdsh-plugins/blob/HEAD/CONVENTIONS.md).
+
+Settings are additive, the way that convention asks. With no settings provider
+composed — a test bench, a hand-built tree — the door still opens on whatever
+the profile's patch entry configured, and the device table lives in memory only:
+a phone paired against it pairs again after a restart. `dsh web` composes one,
+so in the deployment above the table is durable and the rest is editable.
+
 ## Reaching it
 
 Two deployments, both over Tailscale, neither over the public internet.
@@ -105,7 +126,7 @@ launch another.
 
 ```sh
 pnpm install
-pnpm test          # 92 specs, no harness needed — every harness import is `import type`
+pnpm test          # 95 specs, no harness needed — every harness import is `import type`
 pnpm run typecheck
 pnpm run build
 ```

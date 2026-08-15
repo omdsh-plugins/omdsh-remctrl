@@ -119,6 +119,20 @@ describe('cross-origin posture', () => {
     const posted = await pair({ code: '000000' }, { origin: 'https://evil.example' })
     expect(posted.headers.get('access-control-allow-origin')).toBeNull()
   })
+
+  it('refuses the one shape a cross-origin page could send without a preflight', async () => {
+    // `text/plain` (and the form encodings) make a POST a SIMPLE request: the
+    // browser sends it and only refuses to show the answer. Reading the reply
+    // was never the attack — spending the pairing budget was.
+    bench.pairing.mint()
+    const response = await fetch(`${base}${MOBILE_ROUTES.pair}`, {
+      method: 'POST',
+      headers: { 'content-type': 'text/plain;charset=UTF-8' },
+      body: JSON.stringify({ code: '000000' }),
+    })
+    expect(response.status).toBe(415)
+    expect(bench.pairing.peek()?.remaining).toBe(3)
+  })
 })
 
 describe('pairing', () => {

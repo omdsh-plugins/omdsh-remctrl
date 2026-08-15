@@ -16,7 +16,7 @@ import { MOBILE_ROUTES } from '../contract.ts'
 
 /** The page shell. */
 export const MOBILE_HTML = `<!doctype html>
-<html lang="zh">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -173,6 +173,13 @@ export const MOBILE_JS = `(function () {
   function token() { try { return localStorage.getItem(TOKEN_KEY) } catch (e) { return null } }
   function store(value) { try { localStorage.setItem(TOKEN_KEY, value) } catch (e) { /* private mode */ } }
   function drop() { try { localStorage.removeItem(TOKEN_KEY) } catch (e) { /* private mode */ } }
+
+  // The shell ships the language of the fallback strings, because a static
+  // file cannot know which set will be used. Every visible string is chosen
+  // here, so the declaration has to move with them: a phone reading English
+  // under \`lang="zh"\` gets offered a translation it does not need and hears
+  // the wrong voice from its screen reader.
+  document.documentElement.lang = zh ? 'zh' : 'en'
 
   el('title').textContent = text.title
   el('pair-hint').textContent = text.hint

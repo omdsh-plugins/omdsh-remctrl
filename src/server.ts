@@ -150,6 +150,18 @@ async function handlePair(
     sendJson(res, 405, { error: 'a pairing request is posted' })
     return
   }
+  if (!declaresJson(req)) {
+    // This is what makes the cross-origin posture in `securityHeaders` true
+    // rather than aspirational. A POST carrying `text/plain` — or a form
+    // encoding, which needs no script at all — is a SIMPLE request: the
+    // browser sends it without asking a preflight question, so somebody
+    // else's page could spend this door's pairing budget from a phone that
+    // merely visited it. Requiring JSON is what makes the request non-simple,
+    // so the browser asks the preflight question this door never answers and
+    // the request is never made.
+    sendJson(res, 415, { error: 'a pairing request is JSON' })
+    return
+  }
   const body = await readBody(req)
   if (body === undefined) {
     sendJson(res, 413, refusal({ reason: 'malformed', message: 'the request body is too large' }))
@@ -318,6 +330,21 @@ function headerOf(req: IncomingMessage, name: string): string | undefined {
   const raw = req.headers[name]
   const value = Array.isArray(raw) ? raw[0] : raw
   return value === undefined || value === '' ? undefined : value
+}
+
+/**
+ * Whether a request declares a JSON body.
+ *
+ * The media type alone decides it: a client is entitled to attach a charset,
+ * and `application/json; charset=utf-8` is the same request as
+ * `application/json`.
+ * @param req - the request.
+ * @returns true when the content type is `application/json`.
+ */
+function declaresJson(req: IncomingMessage): boolean {
+  const header = headerOf(req, 'content-type')
+  if (header === undefined) return false
+  return header.split(';', 1)[0]?.trim().toLowerCase() === 'application/json'
 }
 
 /** Widen a refusal to the response body shape, so every branch returns one type. */

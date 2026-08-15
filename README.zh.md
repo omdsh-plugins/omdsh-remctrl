@@ -35,6 +35,22 @@ omdsh-remctrl: put Tailscale in front of it — `tailscale serve --bg --https=44
 omdsh-remctrl: no device is paired yet; pairing code 483212, good for 300s.
 ```
 
+### 它需要 profile 提供什么
+
+一个 harness 自带的服务：`connection`，桌面配对面板走的那条只对本机开放的控制通道就架在
+它上面。它由 web 界面那层 bundle 组合进来，所以这一行要装在有界面的 profile 上——也就是
+上面那条命令装进去的那个。cordis 对被注入的服务会无限期等待，而启动审计会因为任何仍是
+`pending` 的 entry 判整个应用失败，所以没有 `connection` 的 headless profile 不能带这一行：
+那不是安静地不工作，而是一次死掉的启动。
+
+本插件的 `inject` 里没有任何由别的插件发布的服务，也不需要有。没有必须一起装的伴生插件，
+也没有哪块功能会因为少装了谁而熄灭——这条规则以及它成为规则的理由，写在
+[CONVENTIONS.zh.md](https://github.com/omdsh-plugins/omdsh-plugins/blob/HEAD/CONVENTIONS.zh.md) 里。
+
+设置是可加的，正如那份约定所要求的。没有 settings 提供方时——测试台，或一棵手搭的树——门
+照样按 profile patch 里写的值打开，只是设备表只活在内存里：配过对的手机在重启后要重新配
+一次。`dsh web` 会带上 settings，所以在上面那套部署里，设备表是持久的，其余字段也能改。
+
 ## 怎么连上
 
 两种部署，都走 Tailscale，都不走公网。
@@ -96,7 +112,7 @@ Tailscale 用 `<node>.<tailnet>.ts.net` 的**真 Let's Encrypt 证书**终结 TL
 
 ```sh
 pnpm install
-pnpm test          # 92 条测试，不需要 harness——所有 harness 导入都是 `import type`
+pnpm test          # 95 条测试，不需要 harness——所有 harness 导入都是 `import type`
 pnpm run typecheck
 pnpm run build
 ```

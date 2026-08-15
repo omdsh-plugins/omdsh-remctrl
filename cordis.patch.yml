@@ -29,8 +29,17 @@
 # over `ctx.connection.rpc`, a loopback-fenced channel the harness already
 # owns, so no configuration surface is exposed on the phone's door.
 #
-# A profile composing this row with no `connection` service — headless, a test
-# bench — simply never activates it. That is the intended off state.
+# `connection` is the harness's own service, composed by the surface bundle
+# (`@deepseek-ai/dsh-web-app`), so this row belongs in a profile that has a
+# surface — which is the profile it is installed into anyway. It names no
+# service any other plugin publishes, so no companion plugin can leave it
+# pending.
+#
+# What must NOT be read into that: an entry waiting for a service nobody
+# composed does not quietly stay off. cordis's inject wait has no timeout and
+# the boot audit fails the whole app for any entry left `pending`, so adding
+# this row to a headless profile — which composes no `connection` — is a dead
+# boot, not a disabled feature.
 
 - insert:
     - id: omdsh-remctrl
