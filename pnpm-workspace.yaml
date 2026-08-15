@@ -1,0 +1,5 @@
+# pnpm 10+ blocks any dependency shipping an install/build script until it is
+# explicitly reviewed here. This package has no runtime dependencies at all —
+# its listener, its hashing, and its randomness are `node:http`, `node:crypto`,
+# and `node:os` — so there is nothing to review.
+allowBuilds: {}

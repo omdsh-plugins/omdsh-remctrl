@@ -1,0 +1,37 @@
+# The omdsh-remctrl bundle patch: one row, inserted over whatever the profile
+# already composed.
+#
+# This package is a PROFILE LAYER, not a harness edit. `dsh plugin --profile
+# web add @omdsh-plugins/omdsh-remctrl` installs it into the profile directory
+# and appends it to `dsh.profile.bundles`, so this file is applied after
+# `@deepseek-ai/dsh-base` and `@deepseek-ai/dsh-web-app` — the harness tree
+# stays exactly as it shipped, and removing the plugin removes the row with it.
+#
+# ## Why this row registers no webserver route
+#
+# Every other plugin in this directory hangs its routes on `ctx.webServer`.
+# This one opens its own listener instead, and that is the load-bearing
+# decision of the whole design rather than a stylistic one:
+#
+#   - `WebServer.Config` validates its bind host against a RUNTIME schema
+#     admitting only `127.0.0.1` and `0.0.0.0`, and the web app's CLI refuses
+#     `--host 0.0.0.0` outright. The harness carrier therefore cannot be put on
+#     a tailnet address at all; a phone could never reach a route registered on
+#     it.
+#   - Even proxied, that door has `/api` behind it. The `/api` fence reads the
+#     Host header, so a reverse proxy that rewrote Host to loopback would open
+#     every privileged method — settings, credentials — to the whole tailnet
+#     and walk straight past this plugin's token gate. A second listener puts
+#     nothing but this plugin behind the door it opens, which makes that
+#     failure mode absent rather than merely unlikely.
+#
+# The row injects `connection`: the desktop pairing panel reaches the host half
+# over `ctx.connection.rpc`, a loopback-fenced channel the harness already
+# owns, so no configuration surface is exposed on the phone's door.
+#
+# A profile composing this row with no `connection` service — headless, a test
+# bench — simply never activates it. That is the intended off state.
+
+- insert:
+    - id: omdsh-remctrl
+      name: '@omdsh-plugins/omdsh-remctrl'

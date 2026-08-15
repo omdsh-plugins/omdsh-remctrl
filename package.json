@@ -1,0 +1,77 @@
+{
+  "name": "@omdsh-plugins/omdsh-remctrl",
+  "description": "Remote control for the DeepSeek Harness: a second front door on its own port, behind device pairing and a tiered method allowlist, so a phone on your tailnet can watch a session, approve what it asks for, and hand it new work",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/omdsh-plugins/omdsh-remctrl.git"
+  },
+  "packageManager": "pnpm@11.7.0",
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./contract": {
+      "types": "./lib/types/contract.d.ts",
+      "default": "./lib/contract.js"
+    },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "plughub": {
+      "displayName": {
+        "": "Remote Control",
+        "zh": "远程控制"
+      },
+      "summary": {
+        "": "Watch, approve, and dispatch from a phone on your tailnet.",
+        "zh": "在 tailnet 上用手机查看进度、批准工具调用、下发新任务。"
+      },
+      "category": "system",
+      "settings": [
+        "omdsh-remctrl"
+      ],
+      "docs": "https://github.com/omdsh-plugins/omdsh-remctrl#readme",
+      "order": 30
+    }
+  },
+  "files": [
+    "lib/index.js",
+    "lib/contract.js",
+    "lib/types/**/*.d.ts",
+    "cordis.patch.yml",
+    "src/**/*.ts",
+    "README.md",
+    "README.zh.md"
+  ],
+  "scripts": {
+    "build": "tsc --build tsconfig.json && tsdown",
+    "typecheck": "tsc --build tsconfig.json --force && tsc --noEmit -p tsconfig.tests.json",
+    "test": "vitest run",
+    "prepare": "tsc --build tsconfig.json && tsdown"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/schemastery": "*"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/schemastery": "3.18.1",
+    "@types/node": "^22.20.0",
+    "tsdown": "^0.22.2",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8"
+  }
+}
