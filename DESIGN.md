@@ -310,7 +310,7 @@ Tailscale 用 `*.ts.net` 的**真 Let's Encrypt 证书**终结 TLS（需要 tail
 
 ## 7. 包的形状
 
-按 [CONVENTIONS](https://github.com/omdsh-plugins/omdsh-plugins/blob/HEAD/CONVENTIONS.md) 的七条。
+按 [CONVENTIONS](https://omdsh-plugins.github.io/conventions/) 的七条。
 
 ```
 omdsh-remctrl/
