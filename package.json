@@ -65,8 +65,8 @@
     "prepare": "tsc --build tsconfig.json && tsdown"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "*",
-    "@deepseek-ai/schemastery": "*"
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/schemastery": ">=0.1.0-rc.6"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
