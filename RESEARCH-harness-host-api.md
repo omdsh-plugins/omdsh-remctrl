@@ -1,13 +1,13 @@
 # omdsh-remctrl 宿主侧 API 调研报告
 
 Harness checkout: `/Users/haowang/Workdir/Projs/Gits/deepseek-harness`(包路径下文简写为 `pkgs/`)。
-插件模板: `/Users/haowang/Workdir/Projs/Gits/omdsh-plugins/omdsh-code`(下文简写为 `omdsh-code/`)。
+插件模板: `/Users/haowang/Workdir/Projs/Gits/omdsh-plugins/omdsh-codemode`(下文简写为 `omdsh-codemode/`)。
 
 ---
 
 ## 1. host Context 服务表
 
-**结论**: 服务解析用 `ctx.get('名字')`(omdsh-code 的做法,见 omdsh-code/src/index.ts:94-95),服务名就是 cordis Service 构造时的字符串;`ctx.webServer` 因有 declare-module 合并可直接 `ctx.webServer.xxx` 访问。注意 omdsh-code/src/index.ts:89-95 的警告:插件在 monorepo 外编译时,浏览器侧与宿主侧的 `Context` 声明会被合并进同一个程序,`ctx.sessions` 等点号访问可能解析成"编译器先看到的那一份"——因此**按名字 `ctx.get()` + `as unknown as T` 是插件侧最稳的写法**。`webRuntime` 没有 declare-module 类型(动态 `ctx.provide`),必须用结构镜像(omdsh-code/src/index.ts:78-81)或 `ctx.get('webRuntime') as unknown as ...`。
+**结论**: 服务解析用 `ctx.get('名字')`(omdsh-codemode 的做法,见 omdsh-codemode/src/index.ts:94-95),服务名就是 cordis Service 构造时的字符串;`ctx.webServer` 因有 declare-module 合并可直接 `ctx.webServer.xxx` 访问。注意 omdsh-codemode/src/index.ts:89-95 的警告:插件在 monorepo 外编译时,浏览器侧与宿主侧的 `Context` 声明会被合并进同一个程序,`ctx.sessions` 等点号访问可能解析成"编译器先看到的那一份"——因此**按名字 `ctx.get()` + `as unknown as T` 是插件侧最稳的写法**。`webRuntime` 没有 declare-module 类型(动态 `ctx.provide`),必须用结构镜像(omdsh-codemode/src/index.ts:78-81)或 `ctx.get('webRuntime') as unknown as ...`。
 
 ### 签名清单(服务名 → 类型 → 声明位置)
 
@@ -24,18 +24,18 @@ Harness checkout: `/Users/haowang/Workdir/Projs/Gits/deepseek-harness`(包路径
 | `connection` | `HostConnectionHandle` | pkgs/client/connection/src/rpc-host.ts:35-40 | 同文件 :52 `super(ctx, 'connection')` |
 | `webStartup` | 动态 provide(`WebStartupValues`) | 无声明,pkgs/bundle/web-app/src/startup.ts:19 (`WEB_STARTUP_SERVICE = 'webStartup'`) | — |
 
-omdsh-code 的写法(证据):
+omdsh-codemode 的写法(证据):
 
-- `export const inject = ['webServer', 'sessions', 'webRuntime']` — omdsh-code/src/index.ts:48
-- `const sessions = ctx.get('sessions') as unknown as SessionStore` — omdsh-code/src/index.ts:94
-- `const webRuntime = ctx.get('webRuntime') as unknown as WebRuntimeTrust` — omdsh-code/src/index.ts:95
-- `ctx.webServer.registerUpgrade(...)`(点号访问,依赖 declare-module)— omdsh-code/src/index.ts:132
+- `export const inject = ['webServer', 'sessions', 'webRuntime']` — omdsh-codemode/src/index.ts:48
+- `const sessions = ctx.get('sessions') as unknown as SessionStore` — omdsh-codemode/src/index.ts:94
+- `const webRuntime = ctx.get('webRuntime') as unknown as WebRuntimeTrust` — omdsh-codemode/src/index.ts:95
+- `ctx.webServer.registerUpgrade(...)`(点号访问,依赖 declare-module)— omdsh-codemode/src/index.ts:132
 
 ---
 
 ## 2. webServer 路由注册(pkgs/host/webserver/src/index.ts,包 `@deepseek-ai/dsh-host-webserver`)
 
-**结论**: `registerUpgrade` 只做**精确路径**的 HTTP Upgrade(WS 握手由插件自己的 `WebSocketServer({noServer:true})` 完成,见 omdsh-code/src/index.ts:131-145)。普通 GET/POST 用 `register()`:handler 拿到原生 `node:http` 的 `IncomingMessage`/`ServerResponse`,**可以长挂响应(文档明确支持 SSE 语义,见 :32)**——所以 remctrl 的手机页面和配对端点都用 `register({kind:'exact'|'prefix', ...})` 即可,不需要 upgrade。
+**结论**: `registerUpgrade` 只做**精确路径**的 HTTP Upgrade(WS 握手由插件自己的 `WebSocketServer({noServer:true})` 完成,见 omdsh-codemode/src/index.ts:131-145)。普通 GET/POST 用 `register()`:handler 拿到原生 `node:http` 的 `IncomingMessage`/`ServerResponse`,**可以长挂响应(文档明确支持 SSE 语义,见 :32)**——所以 remctrl 的手机页面和配对端点都用 `register({kind:'exact'|'prefix', ...})` 即可,不需要 upgrade。
 
 ### 服务接口全量方法
 
@@ -75,9 +75,9 @@ get host(): Config['host']                       // :84
 ### 围栏实现
 
 - `isTrustedApiRequest(request, trustedHosts)` — pkgs/client/connection/src/api-request-trust.ts:96-123:
-  1. Host 头必须解析为 loopback(`isLoopbackHostname`,loopback-hostname.ts;omdsh-code 的等价实现 omdsh-code/src/trust-fence.ts:44-50)或 trustedHosts 权威(:108);
+  1. Host 头必须解析为 loopback(`isLoopbackHostname`,loopback-hostname.ts;omdsh-codemode 的等价实现 omdsh-codemode/src/trust-fence.ts:44-50)或 trustedHosts 权威(:108);
   2. `sec-fetch-site: cross-site` 拒绝(:111);
-  3. 有 Origin 时必须与 Host 同源;无 Origin 放行(:116-122)。omdsh-code 的本地复刻:omdsh-code/src/trust-fence.ts:75-89。
+  3. 有 Origin 时必须与 Host 同源;无 Origin 放行(:116-122)。omdsh-codemode 的本地复刻:omdsh-codemode/src/trust-fence.ts:75-89。
 - `trustedHosts` 来源链:
   - client-connection 配置 `ConnectionConfig.trustedHosts?` — pkgs/client/connection/src/index.ts:50-67;
   - bundle 里 wiring:`trustedHosts: !!js ctx.webRuntime.trustedHosts` — pkgs/bundle/web-app/cordis.patch.yml(connection 行);
@@ -191,7 +191,7 @@ fork(source: Session | SessionId, boundary?: number, childSessionId?: SessionId)
 
 ## 7. 路由前缀约定
 
-**结论**: webServer 的路径表是平面的,没有保留字表;唯一硬约束是 `/api` 前缀已被 client-connection 认领为 prefix 路由(pkgs/client/connection/src/index.ts:161-173),重复注册同 (kind,path) 会抛错(webserver index.ts:96-98)。插件用自己的前缀(omdsh-code 用 `/omdsh-code`,TERMINAL_PATH `/omdsh-code/terminal` — omdsh-code/src/shared.ts:12-15)即可;**普通请求(手机页面、配对端点)一律走 `webServer.register({kind:'exact'|'prefix', handler(req,res)})`**,handler 是原生 node http,可读 body、可长挂 SSE;未匹配路径会落进 fallback(SPA dist,由 `@deepseek-ai/dsh-host-frontend-static` 持有 fallback 席位,bundle/web-app/src/index.ts:139),所以若想从手机直达静态页,注册 exact route 覆盖 SPA 兜底即可。WS 则用 `registerUpgrade` + 自有 `WebSocketServer({noServer:true})`(omdsh-code/src/index.ts:131-145)。**不要**把插件路由挂到 `/api/*` 下(那是 RPC 信封协议通道,GET 行为被 connection 定死 :150-155)。
+**结论**: webServer 的路径表是平面的,没有保留字表;唯一硬约束是 `/api` 前缀已被 client-connection 认领为 prefix 路由(pkgs/client/connection/src/index.ts:161-173),重复注册同 (kind,path) 会抛错(webserver index.ts:96-98)。插件用自己的前缀(omdsh-codemode 用 `/omdsh-codemode`,TERMINAL_PATH `/omdsh-codemode/terminal` — omdsh-codemode/src/shared.ts:12-15)即可;**普通请求(手机页面、配对端点)一律走 `webServer.register({kind:'exact'|'prefix', handler(req,res)})`**,handler 是原生 node http,可读 body、可长挂 SSE;未匹配路径会落进 fallback(SPA dist,由 `@deepseek-ai/dsh-host-frontend-static` 持有 fallback 席位,bundle/web-app/src/index.ts:139),所以若想从手机直达静态页,注册 exact route 覆盖 SPA 兜底即可。WS 则用 `registerUpgrade` + 自有 `WebSocketServer({noServer:true})`(omdsh-codemode/src/index.ts:131-145)。**不要**把插件路由挂到 `/api/*` 下(那是 RPC 信封协议通道,GET 行为被 connection 定死 :150-155)。
 
 ---
 
@@ -208,4 +208,4 @@ fork(source: Session | SessionId, boundary?: number, childSessionId?: SessionId)
 
 ## 附:测试模板
 
-omdsh-code 的宿主单测演示了最小编排:fake `ctx = {effect, get, webServer}` + 名字解析服务,不启动真实 server — omdsh-code/tests/host-apply.spec.ts:33-62;路由表对称性由 harness 的 invariant 探针保障(pkgs/host/webserver/src/invariant.ts:26-50)。
+omdsh-codemode 的宿主单测演示了最小编排:fake `ctx = {effect, get, webServer}` + 名字解析服务,不启动真实 server — omdsh-codemode/tests/host-apply.spec.ts:33-62;路由表对称性由 harness 的 invariant 探针保障(pkgs/host/webserver/src/invariant.ts:26-50)。
