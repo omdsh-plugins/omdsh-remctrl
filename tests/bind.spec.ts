@@ -6,7 +6,7 @@ import {
 } from '../src/bind.ts'
 
 /** A laptop on a café network, on Tailscale, with a LAN address too. */
-const HELD = ['127.0.0.1', '192.168.1.42', '100.101.102.103', 'fe80::1']
+const HELD = ['127.0.0.1', '192.168.1.42', '100.101.102.103', 'fd7a:115c:a1e0::bc01:53c1', 'fe80::1']
 
 /** A request, with whatever the case is about. */
 function request(over: Partial<BindRequest> = {}): BindRequest {
@@ -63,14 +63,29 @@ describe('isTailnetAddress', () => {
     expect(isTailnetAddress('101.64.0.1')).toBe(false)
   })
 
-  it('is false for anything that is not an IPv4 literal', () => {
+  it('is the whole of Tailscale\'s IPv6 prefix, and nothing outside it', () => {
+    // The v6 prefix earns its keep on a machine whose 100.64/10 route another
+    // VPN has stolen: CGNAT space gets claimed by proxies routinely, and
+    // fd7a:115c:a1e0::/48 is a block nobody else wants.
+    expect(isTailnetAddress('fd7a:115c:a1e0::bc01:53c1')).toBe(true)
+    expect(isTailnetAddress('fd7a:115c:a1e0:0:0:0:bc01:53c1')).toBe(true)
+    expect(isTailnetAddress('FD7A:115C:A1E0::1')).toBe(true)
+    expect(isTailnetAddress('fd7a:115c:a1e1::1')).toBe(false)
+    expect(isTailnetAddress('fd00::1')).toBe(false)
+  })
+
+  it('ignores a zone id, which names an interface rather than a network', () => {
+    expect(isTailnetAddress('fd7a:115c:a1e0::1%utun5')).toBe(true)
+  })
+
+  it('is false for anything that is neither', () => {
     expect(isTailnetAddress('example.com')).toBe(false)
     expect(isTailnetAddress('fe80::1')).toBe(false)
     expect(isTailnetAddress('')).toBe(false)
   })
 
-  it('picks the tailnet addresses out of a machine\'s list', () => {
-    expect(tailnetAddresses(HELD)).toEqual(['100.101.102.103'])
+  it('picks BOTH families out of a machine\'s list', () => {
+    expect(tailnetAddresses(HELD)).toEqual(['100.101.102.103', 'fd7a:115c:a1e0::bc01:53c1'])
   })
 })
 
@@ -123,6 +138,12 @@ describe('resolveBind, under the tunnel', () => {
 })
 
 describe('resolveBind, on an address this machine HOLDS', () => {
+  it('binds a tailnet IPv6 address exactly, with no acknowledgement either', () => {
+    expect(resolveBind(request({ carrier: 'direct', publicHost: 'fd7a:115c:a1e0::bc01:53c1' }))).toEqual({
+      kind: 'ok', host: 'fd7a:115c:a1e0::bc01:53c1', carrier: 'direct', scope: 'tailnet',
+    })
+  })
+
   it('binds a tailnet address exactly, and needs no acknowledgement', () => {
     // The whole point: binding the wildcard for a tailnet address would put a
     // plaintext port on every OTHER network the laptop is on as well.

@@ -86,7 +86,7 @@ export {
 } from './access.ts'
 export {
   bracket, carrierFor, heldAddress, isTailnetAddress, localAddresses, reachableUrl, readPublicHost,
-  resolveBind, signInLink, tailnetAddresses, TAILNET_CIDR, WILDCARD,
+  resolveBind, signInLink, tailnetAddresses, TAILNET_CIDR, TAILNET_CIDR6, WILDCARD,
   type BindDecision, type BindRequest, type BindScope, type InterfaceTable, type PublicHost,
 } from './bind.ts'
 export {

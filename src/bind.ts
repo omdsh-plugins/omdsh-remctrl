@@ -35,7 +35,7 @@ import { normalizeAddress } from './forward.ts'
 export const WILDCARD = '0.0.0.0'
 
 /**
- * Tailscale's range, and the CGNAT block it borrows: `100.64.0.0/10`.
+ * Tailscale's IPv4 range, and the CGNAT block it borrows: `100.64.0.0/10`.
  *
  * An address in it ON A LOCAL INTERFACE is, in practice, a WireGuard mesh —
  * Tailscale or one of its relatives. It is not a proof: an ISP doing
@@ -46,6 +46,21 @@ export const WILDCARD = '0.0.0.0'
  * customers of one ISP rather than by everybody.
  */
 export const TAILNET_CIDR = '100.64.0.0/10'
+
+/**
+ * Tailscale's IPv6 range: `fd7a:115c:a1e0::/48`.
+ *
+ * A ULA prefix Tailscale allocated to itself, and a far better signal than the
+ * IPv4 one — nothing else uses it, so an address here is a tailnet address
+ * rather than probably-a-tailnet-address.
+ *
+ * It earns its place for a reason that is not theoretical: a machine running
+ * another VPN in TUN mode can have its `100.64.0.0/10` route stolen — the range
+ * is CGNAT space and proxies claim it routinely — while the v6 prefix, which
+ * nobody else wants, keeps working. When that happens the v6 address is the
+ * only one of the pair that carries traffic.
+ */
+export const TAILNET_CIDR6 = 'fd7a:115c:a1e0::/48'
 
 /** How far the bound address reaches. */
 export type BindScope =
@@ -98,12 +113,20 @@ export function localAddresses(table: InterfaceTable): string[] {
 }
 
 /**
- * Whether one address is inside {@link TAILNET_CIDR}.
+ * Whether one address is a tailnet address, in either family.
  * @param address - the address, in any spelling.
- * @returns whether it is `100.64.0.0`–`100.127.255.255`.
+ * @returns whether it is in {@link TAILNET_CIDR} or {@link TAILNET_CIDR6}.
  */
 export function isTailnetAddress(address: string): boolean {
-  const parts = normalizeAddress(address).split('.')
+  const value = normalizeAddress(address)
+  if (value.includes(':')) {
+    // The /48 is the first three groups, and each of them is a full four hex
+    // digits — so no `::` compression and no leading-zero spelling can move
+    // them, and a prefix compare is exact rather than approximate.
+    const groups = value.split(':')
+    return groups.length >= 3 && groups[0] === 'fd7a' && groups[1] === '115c' && groups[2] === 'a1e0'
+  }
+  const parts = value.split('.')
   if (parts.length !== 4) return false
   const [first, second] = parts.map(part => Number(part))
   if (first !== 100) return false
