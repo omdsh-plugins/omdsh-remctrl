@@ -247,6 +247,16 @@ describe('checkPublicHost', () => {
     // Somebody who means a port is writing a URL; a bare address with one would
     // show a number on the card that the listener does not hold.
     expect(checkPublicHost('121.43.252.12:7860')).toMatch(/whole URL/)
+    expect(checkPublicHost('example.com:8080')).toMatch(/whole URL/)
+  })
+
+  it('does NOT mistake an IPv6 address for a host and port', () => {
+    // `fd7a:115c:a1e0::1` ends in `:1`, and reading that as a port turned a
+    // perfectly good tailnet address into an error message about ports.
+    expect(checkPublicHost('fd7a:115c:a1e0::1')).toBeUndefined()
+    expect(checkPublicHost('fd7a:115c:a1e0::bc01:53c1')).toBeUndefined()
+    expect(checkPublicHost('2001:db8::1')).toBeUndefined()
+    expect(checkPublicHost('[2001:db8::1]')).toBeUndefined()
   })
 
   it('refuses a path, because this forward serves an origin rather than a subdirectory', () => {

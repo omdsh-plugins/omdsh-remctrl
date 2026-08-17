@@ -198,9 +198,15 @@ export function checkPublicHost(host: string): string | undefined {
   if (host.includes('/')) return 'publicHost is an address with no path on it, or a whole http(s) URL'
   // A port on a BARE address would be silently ignored in favour of the `port`
   // field, which is worse than a refusal: the card would show one number and
-  // the listener would hold another. Somebody who means a port is writing a
-  // URL. An IPv6 literal in brackets keeps its own colons.
-  if (!host.startsWith('[') && /:\d+$/.test(host)) {
+  // the listener would hold another. Somebody who means a port is writing a URL.
+  //
+  // An IPv6 literal has colons of its own, so the test cannot be "ends in
+  // `:digits`" — `fd7a:115c:a1e0::1` is a whole address whose last group
+  // happens to be numeric, and refusing it turned a perfectly good tailnet
+  // address into an error message about ports. More than one colon means the
+  // colons are the address, not a separator.
+  const colons = host.split(':').length - 1
+  if (!host.startsWith('[') && colons === 1 && /:\d+$/.test(host)) {
     return 'a bare address carries no port — set the port field, or write the whole URL instead'
   }
   return undefined
