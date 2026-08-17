@@ -403,8 +403,17 @@ function BrowsersSection(props: SectionProps) {
  * the one nobody was looking at.
  */
 function AccessSection(props: SectionProps) {
-  const { t, snapshot, acknowledge, refresh } = props
+  const { t, snapshot, acknowledge, clearLog, refresh } = props
   const { events, unseen } = snapshot.access
+  const [confirming, setConfirming] = useState(false)
+
+  // The confirmation resets whenever the log moves underneath, so a button that
+  // says "clear 17" can never be the one that clears twenty.
+  useEffect(() => { setConfirming(false) }, [events.length])
+
+  // The row a previous clear left behind does not count as something to clear.
+  const clearable = events.filter(event => event.cleared === undefined).length
+
   return (
     <section className={css['section']}>
       <div className={css['switchRow']}>
@@ -412,20 +421,50 @@ function AccessSection(props: SectionProps) {
           {t('access.title')}
           {unseen > 0 && <span className={css['badge']}>{t('access.unseen', { count: unseen })}</span>}
         </h4>
-        {unseen > 0 && (
-          <button
-            type="button"
-            className={css['quiet']}
-            onClick={() => { void acknowledge().then(async () => refresh()) }}
-          >
-            {t('access.ack')}
-          </button>
-        )}
+        <div className={css['confirmRow']}>
+          {unseen > 0 && (
+            <button
+              type="button"
+              className={css['quiet']}
+              onClick={() => { void acknowledge().then(async () => refresh()) }}
+            >
+              {t('access.ack')}
+            </button>
+          )}
+          {clearable > 0 && (confirming
+            ? (
+                <>
+                  <button
+                    type="button"
+                    className={css['danger-button']}
+                    onClick={() => {
+                      setConfirming(false)
+                      void clearLog().then(async () => refresh())
+                    }}
+                  >
+                    {t('access.clear.confirm', { count: clearable })}
+                  </button>
+                  <button type="button" className={css['quiet']} onClick={() => { setConfirming(false) }}>
+                    {t('access.clear.cancel')}
+                  </button>
+                </>
+              )
+            : (
+                <button
+                  type="button"
+                  className={css['quiet']}
+                  title={t('access.clear.hint')}
+                  onClick={() => { setConfirming(true) }}
+                >
+                  {t('access.clear')}
+                </button>
+              ))}
+        </div>
       </div>
       <ul className={css['list']}>
         {events.map(event => <AccessRow key={`${String(event.at)}-${event.address}`} event={event} t={t} />)}
       </ul>
-      <p className={css['muted']}>{t('access.hint')}</p>
+      <p className={css['muted']}>{confirming ? t('access.clear.hint') : t('access.hint')}</p>
     </section>
   )
 }
@@ -433,6 +472,16 @@ function AccessSection(props: SectionProps) {
 /** One thing that happened at the door. */
 function AccessRow(props: { event: AccessEvent; t: Translate }) {
   const { event, t } = props
+  // The mark a clear left behind. Rendered quietly — it is not an access event,
+  // it is the reason the ones above it are missing.
+  if (event.cleared !== undefined) {
+    return (
+      <li className={css['row']}>
+        <span className={css['muted']}>{t('access.cleared', { count: event.cleared })}</span>
+        <span className={css['muted']}>{relative(event.at)}</span>
+      </li>
+    )
+  }
   const what = event.granted
     ? t('access.granted', { label: event.label })
     : event.attempts > 1

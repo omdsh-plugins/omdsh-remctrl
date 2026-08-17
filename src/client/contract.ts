@@ -29,6 +29,8 @@ export interface RemctrlInjected {
   reset: () => Promise<string>
   /** Mark the access log as read. */
   acknowledge: () => Promise<void>
+  /** Empty the access log. */
+  clearLog: () => Promise<void>
   /** Copy one string to the clipboard, reporting whether it landed. */
   copy: (value: string) => Promise<boolean>
 }

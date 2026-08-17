@@ -113,6 +113,13 @@ still push every real event out of a bounded log inside ten minutes. Nothing is
 said out loud until the sixth failure from an address, which is the point at
 which it stops looking like somebody mistyping and its throttle budget is spent.
 
+The log can be cleared, and clearing it **leaves one row saying so**. Anyone who
+can sign in can clear it — it is behind the same passcode as everything else —
+so the question is not whether an intruder can erase their tracks but whether
+the erasure is visible. One row naming the time and the count costs nothing and
+is what keeps a wiped log from looking exactly like a log where nothing ever
+happened.
+
 ## On a phone
 
 The harness's interface has no width media query anywhere in it. What it does

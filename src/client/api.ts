@@ -136,3 +136,12 @@ export async function resetPasscode(connection: ConnectionRpcLike): Promise<Pass
 export async function ackAccess(connection: ConnectionRpcLike): Promise<AccessView> {
   return call<AccessView>(connection, CONTROL_ENDPOINTS.ackAccess)
 }
+
+/**
+ * Empty the access log. One row is left behind saying it was emptied.
+ * @param connection - the browser Connection service.
+ * @returns the log as it now reads.
+ */
+export async function clearAccess(connection: ConnectionRpcLike): Promise<AccessView> {
+  return call<AccessView>(connection, CONTROL_ENDPOINTS.clearAccess)
+}

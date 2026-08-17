@@ -155,6 +155,8 @@ export const CONTROL_ENDPOINTS = {
   readAccess: 'access/read',
   /** Mark the log as read, so the unseen count starts again. */
   ackAccess: 'access/ack',
+  /** Empty the log. Leaves one row saying it was emptied; see {@link AccessEvent.cleared}. */
+  clearAccess: 'access/clear',
 } as const
 
 /** One browser that has signed in, as the desktop card lists it. */
@@ -377,6 +379,17 @@ export interface AccessEvent {
   attempts: number
   /** The browser it created, when it created one. */
   browserId?: string
+  /**
+   * How many rows a CLEAR removed, when this row is the mark it left.
+   *
+   * Emptying the log leaves this one entry behind rather than nothing at all,
+   * and that is the whole reason the field exists: a log that can go from
+   * fifty rows to a blank page with no explanation is a log an intruder empties
+   * on their way out. It cannot stop them — anyone who signs in can clear it —
+   * but it can stop the result from being indistinguishable from "nothing has
+   * ever happened here".
+   */
+  cleared?: number
 }
 
 /** How long consecutive refusals from one address fold into one row. */

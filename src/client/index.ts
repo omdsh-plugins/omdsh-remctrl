@@ -37,7 +37,7 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 // the purity gate in `tsdown.config.ts` refuses one.
 import type {} from '@omdsh-plugins/omdsh-plughub/client'
 import {
-  ackAccess, readCard, resetPasscode, revokeAllBrowsers, revokeBrowser, writeConfig,
+  ackAccess, clearAccess, readCard, resetPasscode, revokeAllBrowsers, revokeBrowser, writeConfig,
   type ConnectionRpcLike,
 } from './api.ts'
 import { copyToClipboard } from './clipboard.ts'
@@ -46,7 +46,8 @@ import { en, zh, type RemctrlKey } from './locales.ts'
 import { RemctrlCard } from './RemctrlCard.tsx'
 
 export {
-  ackAccess, ControlError, readCard, resetPasscode, revokeAllBrowsers, revokeBrowser, writeConfig,
+  ackAccess, clearAccess, ControlError, readCard, resetPasscode, revokeAllBrowsers, revokeBrowser,
+  writeConfig,
 } from './api.ts'
 export type { CardSnapshot, ConnectionRpcLike } from './api.ts'
 export type { RemctrlCardProps, RemctrlInjected, Translate } from './contract.ts'
@@ -105,6 +106,7 @@ export function apply(ctx: ClientContext): void {
     revokeAll: async () => (await revokeAllBrowsers(connection)).removed,
     reset: async () => (await resetPasscode(connection)).passcode,
     acknowledge: async () => { await ackAccess(connection) },
+    clearLog: async () => { await clearAccess(connection) },
     copy: async value => copyToClipboard(value),
   })
 

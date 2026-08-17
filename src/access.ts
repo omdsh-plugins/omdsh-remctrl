@@ -163,6 +163,27 @@ export class AccessJournal {
     this.flush(true)
   }
 
+  /**
+   * Empty the log, and leave a mark saying so.
+   *
+   * The mark is not decoration. Anyone who can sign in can clear this log —
+   * it is behind the same passcode as everything else — so the question is not
+   * whether an intruder can erase their tracks but whether the erasure is
+   * itself visible. One row that says "N entries were removed, at this time"
+   * costs nothing and makes a cleared log distinguishable from a log where
+   * nothing ever happened.
+   * @returns the log as it now reads.
+   */
+  clear(): AccessView {
+    const removed = this.events.length
+    const at = this.deps.now()
+    this.events = removed === 0 ? [] : [{ at, granted: true, label: '', address: '', attempts: 0, cleared: removed }]
+    // Read, by definition: the person clearing it is the person looking at it.
+    this.seenAt = at
+    this.flush(true)
+    return this.view()
+  }
+
   /** The log as the card reads it. */
   view(): AccessView {
     return {

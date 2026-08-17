@@ -136,6 +136,50 @@ describe('the bound', () => {
   })
 })
 
+describe('clearing', () => {
+  it('empties the log and leaves ONE row saying so', () => {
+    // Anyone who can sign in can clear this log, so the question is not whether
+    // an intruder can erase their tracks but whether the erasure is visible.
+    const { held } = bench()
+    held.granted({ label: 'a', address: 'x', browserId: 'b1' })
+    held.refused({ label: 'b', address: 'y' })
+    const view = held.clear()
+    expect(view.events).toHaveLength(1)
+    expect(view.events[0]?.cleared).toBe(2)
+  })
+
+  it('counts as read, because the person clearing it is the person looking', () => {
+    const { held } = bench()
+    held.granted({ label: 'a', address: 'x', browserId: 'b1' })
+    expect(held.clear().unseen).toBe(0)
+  })
+
+  it('leaves nothing at all when there was nothing to clear', () => {
+    const { held } = bench()
+    expect(held.clear().events).toEqual([])
+  })
+
+  it('reaches the durable copy at once', () => {
+    const { held, persist } = bench()
+    held.granted({ label: 'a', address: 'x', browserId: 'b1' })
+    persist.mockClear()
+    held.clear()
+    expect(persist).toHaveBeenCalledTimes(1)
+    expect((persist.mock.calls[0]?.[0] as { events: unknown[] }).events).toHaveLength(1)
+  })
+
+  it('a clear of a cleared log leaves one mark, not a growing pile', () => {
+    const { held, at } = bench()
+    held.granted({ label: 'a', address: 'x', browserId: 'b1' })
+    held.clear()
+    at.now += 1_000
+    held.granted({ label: 'b', address: 'y', browserId: 'b2' })
+    const view = held.clear()
+    expect(view.events).toHaveLength(1)
+    expect(view.events[0]?.cleared).toBe(2)
+  })
+})
+
 describe('unseen', () => {
   it('counts what arrived since the last acknowledgement', () => {
     const { held, at } = bench()

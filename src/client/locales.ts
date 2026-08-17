@@ -106,6 +106,11 @@ export const zh = {
   'access.refused.many': '{label} 通行码错误 ×{attempts}',
   'access.from': '来自 {address}',
   'access.hint': '这里记的是「谁进来了」，就算你当时没在看。失败尝试会按来源地址合并成一条。',
+  'access.clear': '清空',
+  'access.clear.confirm': '确认清空 {count} 条',
+  'access.clear.cancel': '取消',
+  'access.clear.hint': '清空后会留下一条「已清空」的记录。任何能登录的人都能清空这份日志，所以清空这件事本身必须留痕——否则一份被抹干净的日志，和一份从没发生过事情的日志，长得一模一样。',
+  'access.cleared': '日志已清空，删掉 {count} 条',
 } as const
 
 /** The keys this card translates. */
@@ -204,4 +209,9 @@ export const en: Record<RemctrlKey, string> = {
   'access.refused.many': '{label} got the passcode wrong ×{attempts}',
   'access.from': 'from {address}',
   'access.hint': 'This records who got in, whether or not you were watching. Failed attempts are folded together by address.',
+  'access.clear': 'Clear',
+  'access.clear.confirm': 'Really clear {count}',
+  'access.clear.cancel': 'Cancel',
+  'access.clear.hint': 'Clearing leaves one row saying it was cleared. Anyone who can sign in can clear this log, so the erasure itself has to be visible — otherwise a log somebody wiped looks exactly like a log where nothing ever happened.',
+  'access.cleared': 'Log cleared — {count} entries removed',
 }

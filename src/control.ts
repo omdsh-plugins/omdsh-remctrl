@@ -110,6 +110,12 @@ export function createControlHandler(
       case CONTROL_ENDPOINTS.ackAccess:
         return ok<AccessView>(deps.access.acknowledge())
 
+      case CONTROL_ENDPOINTS.clearAccess:
+        // Like `browser/revoke-all`, this asks for no confirmation of its own:
+        // the card asks, and a channel with a second policy in it is a channel
+        // with two places to change one rule.
+        return ok<AccessView>(deps.access.clear())
+
       case CONTROL_ENDPOINTS.resetPasscode: {
         const minted = await deps.resetPasscode()
         if (typeof minted !== 'string') return badRequest(minted.error)

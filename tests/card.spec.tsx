@@ -60,6 +60,7 @@ function draw(snapshot: Partial<CardSnapshot> = {}, over: Partial<RemctrlCardPro
     revokeAll: vi.fn(async () => 2),
     reset: vi.fn(async () => 'NEWPASSCODE'),
     acknowledge: vi.fn(async () => {}),
+    clearLog: vi.fn(async () => {}),
     copy: vi.fn(async () => true),
     writable: true,
     t,
@@ -318,6 +319,28 @@ describe('the access log', () => {
       access: { events: [granted], unseen: 1 },
     })
     await waitFor(() => { expect(screen.getByText(en['access.title'])).toBeTruthy() })
+  })
+
+  it('clears the log, but only after a second click', async () => {
+    const props = draw({ access: { events: [granted, refused], unseen: 0 } })
+    await waitFor(() => { expect(screen.getByRole('button', { name: en['access.clear'] })).toBeTruthy() })
+    screen.getByRole('button', { name: en['access.clear'] }).click()
+    expect(props.clearLog).not.toHaveBeenCalled()
+    ;(await screen.findByRole('button', { name: /Really clear 2/ })).click()
+    await waitFor(() => { expect(props.clearLog).toHaveBeenCalled() })
+  })
+
+  it('renders the mark a previous clear left behind', async () => {
+    // A log that can go from fifty rows to a blank page with no explanation is
+    // a log an intruder empties on the way out.
+    draw({ access: { events: [{ at: Date.now() - 5_000, granted: true, label: '', address: '', attempts: 0, cleared: 17 }], unseen: 0 } })
+    await waitFor(() => { expect(screen.getByText(/Log cleared — 17 entries removed/)).toBeTruthy() })
+  })
+
+  it('does not offer to clear a log that holds only that mark', async () => {
+    draw({ access: { events: [{ at: Date.now(), granted: true, label: '', address: '', attempts: 0, cleared: 3 }], unseen: 0 } })
+    await waitFor(() => { expect(screen.getByText(en['access.title'])).toBeTruthy() })
+    expect(screen.queryByRole('button', { name: en['access.clear'] })).toBeNull()
   })
 
   it('is not drawn at all when nothing has ever happened', async () => {
