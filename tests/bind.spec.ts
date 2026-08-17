@@ -1,122 +1,254 @@
 import { describe, expect, it } from 'vitest'
+import { LOOPBACK } from '../src/contract.ts'
 import {
-  isTailnetAddress, reachableUrls, resolveBind, tailnetAddresses,
-  type InterfaceTable,
+  bracket, carrierFor, heldAddress, isTailnetAddress, localAddresses, reachableUrl, resolveBind,
+  signInLink, tailnetAddresses, WILDCARD, type BindRequest,
 } from '../src/bind.ts'
 
-/** An interface table shaped like `os.networkInterfaces()`. */
-function table(entries: Record<string, Array<[string, string, boolean]>>): InterfaceTable {
-  return Object.fromEntries(Object.entries(entries).map(([name, addresses]) => [
-    name,
-    addresses.map(([family, address, internal]) => ({ family, address, internal })),
-  ]))
+/** A laptop on a café network, on Tailscale, with a LAN address too. */
+const HELD = ['127.0.0.1', '192.168.1.42', '100.101.102.103', 'fe80::1']
+
+/** A request, with whatever the case is about. */
+function request(over: Partial<BindRequest> = {}): BindRequest {
+  return {
+    enabled: true,
+    carrier: 'tunnel',
+    publicHost: '',
+    allowInsecure: false,
+    hasUpstream: true,
+    available: HELD,
+    ...over,
+  }
 }
 
+describe('carrierFor', () => {
+  it('takes an empty public host to mean "go and get me one"', () => {
+    expect(carrierFor('')).toBe('tunnel')
+    expect(carrierFor('   ')).toBe('tunnel')
+  })
+
+  it('takes anything else to mean this machine is reached at an address of its own', () => {
+    expect(carrierFor('121.43.252.12')).toBe('direct')
+    expect(carrierFor('harness.example.com')).toBe('direct')
+  })
+})
+
+describe('localAddresses', () => {
+  it('flattens every interface, loopback included', () => {
+    // Loopback is included deliberately: somebody who writes `127.0.0.1` into
+    // publicHost is asking for a loopback bind, and refusing to match it would
+    // silently give them every interface instead.
+    expect(localAddresses({
+      lo0: [{ address: '127.0.0.1' }],
+      en0: [{ address: '192.168.1.42' }, { address: 'fe80::1%en0' }],
+    })).toEqual(['127.0.0.1', '192.168.1.42', 'fe80::1'])
+  })
+
+  it('deduplicates, and drops what does not normalize', () => {
+    expect(localAddresses({
+      a: [{ address: '10.0.0.1' }],
+      b: [{ address: '10.0.0.1' }, { address: '' }],
+      c: undefined,
+    })).toEqual(['10.0.0.1'])
+  })
+})
+
 describe('isTailnetAddress', () => {
-  it('accepts the whole of 100.64.0.0/10 and nothing beside it', () => {
+  it('is the whole of 100.64.0.0/10 and nothing either side', () => {
     expect(isTailnetAddress('100.64.0.0')).toBe(true)
-    expect(isTailnetAddress('100.101.5.7')).toBe(true)
+    expect(isTailnetAddress('100.101.102.103')).toBe(true)
     expect(isTailnetAddress('100.127.255.255')).toBe(true)
-    // One below and one above the block: the two boundaries a hand-written
-    // mask gets wrong.
     expect(isTailnetAddress('100.63.255.255')).toBe(false)
-    expect(isTailnetAddress('100.128.0.0')).toBe(false)
+    expect(isTailnetAddress('100.128.0.1')).toBe(false)
+    expect(isTailnetAddress('101.64.0.1')).toBe(false)
   })
 
-  it('refuses ordinary private and public addresses', () => {
-    for (const address of ['192.168.1.20', '10.0.0.5', '172.16.3.1', '8.8.8.8', '127.0.0.1']) {
-      expect(isTailnetAddress(address)).toBe(false)
-    }
+  it('is false for anything that is not an IPv4 literal', () => {
+    expect(isTailnetAddress('example.com')).toBe(false)
+    expect(isTailnetAddress('fe80::1')).toBe(false)
+    expect(isTailnetAddress('')).toBe(false)
   })
 
-  it('refuses anything that is not four plain decimal octets', () => {
-    for (const address of [
-      '100.64.0', '100.64.0.1.1', '100.64.0.256', '100.64.0.-1',
-      ' 100.64.0.1', '100.64.0.1 ', '0x64.64.0.1', '100.64.0.1e0', '',
-      // Leading zeros: `inet_aton` would read this as octal, so one address
-      // would have two spellings and only one could match what the OS reports.
-      '100.064.0.1',
-    ]) {
-      expect(isTailnetAddress(address), address).toBe(false)
-    }
+  it('picks the tailnet addresses out of a machine\'s list', () => {
+    expect(tailnetAddresses(HELD)).toEqual(['100.101.102.103'])
   })
 })
 
-describe('tailnetAddresses', () => {
-  it('keeps external IPv4 addresses inside the block, in table order, once each', () => {
-    const found = tailnetAddresses(table({
-      lo0: [['IPv4', '127.0.0.1', true]],
-      en0: [['IPv4', '192.168.1.20', false], ['IPv6', 'fe80::1', false]],
-      utun4: [['IPv4', '100.101.5.7', false], ['IPv6', 'fd7a:115c::1', false]],
-      utun5: [['IPv4', '100.101.5.7', false], ['IPv4', '100.90.1.2', false]],
+describe('heldAddress', () => {
+  it('finds the address when this machine holds it', () => {
+    expect(heldAddress('100.101.102.103', HELD)).toBe('100.101.102.103')
+  })
+
+  it('finds nothing for an address this machine does not hold', () => {
+    // A cloud VM's public address belongs to the provider's NAT.
+    expect(heldAddress('121.43.252.12', HELD)).toBeUndefined()
+  })
+
+  it('finds nothing for a NAME, which is the right answer for one', () => {
+    // Somebody who writes a hostname has a DNS record pointing at a public
+    // address, and a public address is exactly the case that binds the
+    // wildcard. Resolving it here would also be I/O in a decidable function.
+    expect(heldAddress('harness.example.com', HELD)).toBeUndefined()
+  })
+
+  it('matches through normalization, so brackets and case do not decide', () => {
+    expect(heldAddress('[FE80::1]', HELD)).toBe('fe80::1')
+  })
+})
+
+describe('resolveBind, under the tunnel', () => {
+  it('binds loopback, because cloudflared is the only client', () => {
+    expect(resolveBind(request())).toEqual({
+      kind: 'ok', host: LOOPBACK, carrier: 'tunnel', scope: 'loopback',
+    })
+  })
+
+  it('refuses while switched off, which is the default', () => {
+    const decision = resolveBind(request({ enabled: false }))
+    if (decision.kind !== 'refused') throw new Error('unreachable')
+    expect(decision.message).toMatch(/switched off/)
+  })
+
+  it('refuses with nothing to forward, and says why', () => {
+    const decision = resolveBind(request({ hasUpstream: false }))
+    if (decision.kind !== 'refused') throw new Error('unreachable')
+    expect(decision.message).toMatch(/no web interface/)
+  })
+
+  it('checks the switch before anything else', () => {
+    const decision = resolveBind(request({ enabled: false, carrier: 'direct', publicHost: '1.2.3.4' }))
+    if (decision.kind !== 'refused') throw new Error('unreachable')
+    expect(decision.message).toMatch(/switched off/)
+  })
+})
+
+describe('resolveBind, on an address this machine HOLDS', () => {
+  it('binds a tailnet address exactly, and needs no acknowledgement', () => {
+    // The whole point: binding the wildcard for a tailnet address would put a
+    // plaintext port on every OTHER network the laptop is on as well.
+    expect(resolveBind(request({ carrier: 'direct', publicHost: '100.101.102.103' }))).toEqual({
+      kind: 'ok', host: '100.101.102.103', carrier: 'direct', scope: 'tailnet',
+    })
+  })
+
+  it('still refuses a LAN address without the acknowledgement', () => {
+    // A café Wi-Fi is a network you do not control, and 192.168.x is what you
+    // hold on one.
+    const decision = resolveBind(request({ carrier: 'direct', publicHost: '192.168.1.42' }))
+    if (decision.kind !== 'refused') throw new Error('unreachable')
+    expect(decision.message).toMatch(/not a tailnet address/)
+  })
+
+  it('binds a LAN address exactly once it is acknowledged', () => {
+    expect(resolveBind(request({ carrier: 'direct', publicHost: '192.168.1.42', allowInsecure: true }))).toEqual({
+      kind: 'ok', host: '192.168.1.42', carrier: 'direct', scope: 'wide',
+    })
+  })
+
+  it('binds loopback when loopback is what was asked for, with no acknowledgement', () => {
+    expect(resolveBind(request({ carrier: 'direct', publicHost: '127.0.0.1' }))).toEqual({
+      kind: 'ok', host: '127.0.0.1', carrier: 'direct', scope: 'loopback',
+    })
+  })
+})
+
+describe('resolveBind, on an address this machine does NOT hold', () => {
+  it('REFUSES without the acknowledgement, and says what it would do', () => {
+    const decision = resolveBind(request({ carrier: 'direct', publicHost: '121.43.252.12' }))
+    if (decision.kind !== 'refused') throw new Error('unreachable')
+    expect(decision.message).toMatch(/every interface/)
+    expect(decision.message).toMatch(/in the clear/)
+  })
+
+  it('binds every interface once it is acknowledged, not the literal', () => {
+    // On a cloud VM the public address belongs to the provider's NAT and is on
+    // no local interface, so binding it verbatim fails with EADDRNOTAVAIL on
+    // precisely the machines this carrier exists for.
+    expect(resolveBind(request({
+      carrier: 'direct', publicHost: '121.43.252.12', allowInsecure: true,
+    }))).toEqual({ kind: 'ok', host: WILDCARD, carrier: 'direct', scope: 'wide' })
+  })
+
+  it('treats a hostname the same way, because a hostname means a public address', () => {
+    expect(resolveBind(request({
+      carrier: 'direct', publicHost: 'harness.example.com', allowInsecure: true,
+    }))).toMatchObject({ host: WILDCARD, scope: 'wide' })
+  })
+
+  it('does not accidentally admit a tailnet LITERAL this machine has stopped holding', () => {
+    // Tailscale down, address gone: the configuration still says 100.x, and
+    // binding the wildcard for it without an acknowledgement would be the exact
+    // failure this rule exists to prevent.
+    const decision = resolveBind(request({
+      carrier: 'direct', publicHost: '100.101.102.103', available: ['192.168.1.42'],
     }))
-    expect(found).toEqual(['100.101.5.7', '100.90.1.2'])
-  })
-
-  it('ignores an internal interface even when its address is in the block', () => {
-    expect(tailnetAddresses(table({ lo0: [['IPv4', '100.64.0.1', true]] }))).toEqual([])
-  })
-
-  it('is empty when Tailscale is not up', () => {
-    expect(tailnetAddresses(table({ en0: [['IPv4', '192.168.1.20', false]] }))).toEqual([])
-  })
-
-  it('tolerates an absent interface entry', () => {
-    expect(tailnetAddresses({ en0: undefined })).toEqual([])
+    expect(decision.kind).toBe('refused')
   })
 })
 
-describe('resolveBind', () => {
-  const held = ['100.101.5.7']
+describe('reachableUrl', () => {
+  const tunnelled = { kind: 'ok', host: LOOPBACK, carrier: 'tunnel', scope: 'loopback' } as const
 
-  it('accepts loopback, spelled either way', () => {
-    expect(resolveBind('127.0.0.1', [])).toEqual({ kind: 'loopback', host: '127.0.0.1' })
-    expect(resolveBind('localhost', [])).toEqual({ kind: 'loopback', host: '127.0.0.1' })
+  it('is the tunnel\'s own URL under the tunnel', () => {
+    expect(reachableUrl({
+      decision: tunnelled, publicHost: '', port: 3081, tunnelUrl: 'https://x.trycloudflare.com',
+    })).toBe('https://x.trycloudflare.com')
   })
 
-  it('accepts a tailnet address this machine holds', () => {
-    expect(resolveBind('100.101.5.7', held)).toEqual({ kind: 'tailnet', host: '100.101.5.7' })
+  it('is empty while the tunnel has not answered yet', () => {
+    expect(reachableUrl({ decision: tunnelled, publicHost: '', port: 3081 })).toBe('')
   })
 
-  it('refuses every-interface binds', () => {
-    for (const host of ['0.0.0.0', '::', '*']) {
-      const decision = resolveBind(host, held)
-      expect(decision.kind, host).toBe('refused')
-    }
+  it('is the host that was CONFIGURED, not the address that was bound', () => {
+    // They differ on a cloud VM, and the configured one is the one people type.
+    expect(reachableUrl({
+      decision: { kind: 'ok', host: WILDCARD, carrier: 'direct', scope: 'wide' },
+      publicHost: '121.43.252.12',
+      port: 7860,
+    })).toBe('http://121.43.252.12:7860')
   })
 
-  it('refuses a LAN address, which is the mistake this policy exists for', () => {
-    const decision = resolveBind('192.168.1.20', held)
-    expect(decision.kind).toBe('refused')
-    if (decision.kind !== 'refused') return
-    // The refusal has to say what WOULD work, or it is just a boot that
-    // silently did not happen.
-    expect(decision.message).toContain('100.101.5.7')
+  it('offers nothing for a bind that was refused', () => {
+    expect(reachableUrl({
+      decision: { kind: 'refused', carrier: 'direct', message: 'no' },
+      publicHost: '121.43.252.12',
+      port: 7860,
+      tunnelUrl: 'https://x.trycloudflare.com',
+    })).toBe('')
   })
 
-  it('refuses a tailnet address belonging to some other machine', () => {
-    const decision = resolveBind('100.90.1.2', held)
-    expect(decision.kind).toBe('refused')
-    if (decision.kind !== 'refused') return
-    expect(decision.message).toContain('not one this machine holds')
-  })
-
-  it('refuses a tailnet address when Tailscale is down, and says so', () => {
-    const decision = resolveBind('100.101.5.7', [])
-    expect(decision.kind).toBe('refused')
-    if (decision.kind !== 'refused') return
-    expect(decision.message).toContain('Tailscale does not appear to be up')
+  it('brackets an IPv6 literal so the colons are not read as a port', () => {
+    expect(reachableUrl({
+      decision: { kind: 'ok', host: WILDCARD, carrier: 'direct', scope: 'wide' },
+      publicHost: '2001:db8::1',
+      port: 3081,
+    })).toBe('http://[2001:db8::1]:3081')
   })
 })
 
-describe('reachableUrls', () => {
-  it('names the tailnet URL a phone can type', () => {
-    expect(reachableUrls({ kind: 'tailnet', host: '100.101.5.7' }, 3081))
-      .toEqual(['http://100.101.5.7:3081/'])
+describe('signInLink', () => {
+  it('puts the passcode on the URL', () => {
+    expect(signInLink('https://x.trycloudflare.com', 'ABC123', 'k'))
+      .toBe('https://x.trycloudflare.com/?k=ABC123')
   })
 
-  it('offers nothing for a loopback bind rather than guessing a proxy hostname', () => {
-    expect(reachableUrls({ kind: 'loopback', host: '127.0.0.1' }, 3081)).toEqual([])
-    expect(reachableUrls({ kind: 'refused', host: 'x', message: 'no' }, 3081)).toEqual([])
+  it('is empty without a URL or without a passcode', () => {
+    expect(signInLink('', 'ABC123', 'k')).toBe('')
+    expect(signInLink('https://x.trycloudflare.com', '', 'k')).toBe('')
+  })
+
+  it('does not throw on a URL that will not parse', () => {
+    expect(signInLink('not a url', 'ABC123', 'k')).toBe('')
+  })
+})
+
+describe('bracket', () => {
+  it('leaves a name or an IPv4 literal alone', () => {
+    expect(bracket('example.com')).toBe('example.com')
+    expect(bracket('10.0.0.1')).toBe('10.0.0.1')
+  })
+
+  it('does not double-bracket', () => {
+    expect(bracket('[::1]')).toBe('[::1]')
   })
 })

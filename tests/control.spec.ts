@@ -1,137 +1,269 @@
 import { describe, expect, it, vi } from 'vitest'
-import { CONTROL_ENDPOINTS, type ReachabilityView } from '../src/contract.ts'
-import { createControlHandler } from '../src/control.ts'
-import { DeviceStore } from '../src/devices.ts'
-import { PairingCodes } from '../src/pairing.ts'
+import {
+  CONTROL_ENDPOINTS, type AccessView, type BrowserList, type ConfigView, type Mutation,
+  type PasscodeState, type RemctrlPatch, type RemctrlWire, type RevokeAll, type StatusView,
+} from '../src/contract.ts'
+import { AccessJournal } from '../src/access.ts'
+import { BrowserStore } from '../src/browsers.ts'
+import { checkPublicHost, createControlHandler, parsePatch } from '../src/control.ts'
 
-/** The control handler over a store and a code source a spec controls. */
-function bench(options: { onRevoke?: (deviceId: string) => void } = {}) {
-  const clock = { at: 1_000 }
-  const devices = new DeviceStore({ now: () => clock.at, hashToken: (token) => `hash:${token}` })
-  const pairing = new PairingCodes({
-    now: () => clock.at, mintCode: () => '123456', ttlMs: 60_000, maxAttempts: 3,
-  })
-  const status: ReachabilityView = {
-    bindHost: '100.101.5.7',
-    port: 3081,
-    kind: 'tailnet',
-    tailnetAddresses: ['100.101.5.7'],
-    urls: ['http://100.101.5.7:3081/'],
-    paired: 0,
-  }
-  const handle = createControlHandler({
-    devices,
-    pairing,
-    status: () => ({ ...status, paired: devices.size }),
-    ...options.onRevoke === undefined ? {} : { onRevoke: options.onRevoke },
-  })
-  return { handle, devices, pairing, clock }
+/** The section the bench reports. */
+const CONFIG: RemctrlWire = {
+  enabled: true,
+  publicHost: '',
+  port: 3081,
+  allowInsecure: false,
+  sessionTtlDays: 30,
 }
 
-describe('codes', () => {
-  it('mints one and reads it back', async () => {
-    const { handle } = bench()
-    const minted = await handle(CONTROL_ENDPOINTS.mintCode, {})
-    expect(minted).toEqual({ ok: true, value: { code: '123456', expiresAt: 61_000 } })
+/** Everything the handler needs, with the writes recorded. */
+function bench(options: { refusal?: string } = {}) {
+  const browsers = new BrowserStore({ now: () => 1_000, hashToken: token => `h:${token}` })
+  const clock = { now: 1_000 }
+  const access = new AccessJournal({ now: () => clock.now })
+  const writes: RemctrlPatch[] = []
+  const status = vi.fn((): StatusView => ({
+    enabled: true,
+    listening: true,
+    carrier: 'tunnel',
+    bindHost: '127.0.0.1',
+    bindScope: 'loopback',
+    tailnetAddresses: [],
+    port: 3081,
+    upstreamPort: 62886,
+    url: 'https://x.trycloudflare.com',
+    signInUrl: 'https://x.trycloudflare.com/?k=ABC',
+    passcode: 'ABC',
+    tunnel: { state: { kind: 'up', url: 'https://x.trycloudflare.com' }, binary: '/usr/bin/cloudflared' },
+    browsers: browsers.size,
+    warnings: [],
+  }))
+  const handler = createControlHandler({
+    browsers,
+    access,
+    status,
+    config: () => ({ config: CONFIG, writable: true }),
+    writeConfig: async (patch) => {
+      writes.push(patch)
+      return options.refusal
+    },
+    resetPasscode: async () => 'NEWPASSCODE',
+  })
+  return {
+    browsers,
+    access,
+    clock,
+    writes,
+    status,
+    call: async (endpoint: string, payload: unknown = {}) =>
+      handler(endpoint, payload, new AbortController().signal),
+  }
+}
 
-    const read = await handle(CONTROL_ENDPOINTS.readCode, {})
-    expect(read).toEqual({ ok: true, value: { code: { code: '123456', expiresAt: 61_000 } } })
+describe('reads', () => {
+  it('answers the status, computed fresh on every call', async () => {
+    const held = bench()
+    const first = await held.call(CONTROL_ENDPOINTS.readStatus)
+    await held.call(CONTROL_ENDPOINTS.readStatus)
+    expect(first.ok).toBe(true)
+    // A card left open must not go stale.
+    expect(held.status).toHaveBeenCalledTimes(2)
+    if (!first.ok) throw new Error('unreachable')
+    expect((first.value as StatusView).url).toBe('https://x.trycloudflare.com')
   })
 
-  it('reads null when nothing is outstanding, so a reopened panel does not mint a second', async () => {
-    const { handle } = bench()
-    expect(await handle(CONTROL_ENDPOINTS.readCode, {})).toEqual({ ok: true, value: { code: null } })
+  it('answers the configuration and whether it can be written', async () => {
+    const result = await bench().call(CONTROL_ENDPOINTS.readConfig)
+    if (!result.ok) throw new Error('unreachable')
+    expect(result.value as ConfigView).toEqual({ config: CONFIG, writable: true })
   })
 
-  it('reads null once the code has expired', async () => {
-    const { handle, clock } = bench()
-    await handle(CONTROL_ENDPOINTS.mintCode, {})
-    clock.at = 999_999
-    expect(await handle(CONTROL_ENDPOINTS.readCode, {})).toEqual({ ok: true, value: { code: null } })
-  })
-})
-
-describe('devices', () => {
-  it('lists what is paired', async () => {
-    const { handle, devices } = bench()
-    devices.issue({ deviceId: 'd1', token: 't1', label: 'iPhone', tier: 'drive' })
-    expect(await handle(CONTROL_ENDPOINTS.listDevices, {})).toEqual({
-      ok: true,
-      value: {
-        devices: [{
-          deviceId: 'd1', label: 'iPhone', tier: 'drive', createdAt: 1_000, lastSeenAt: 1_000,
-        }],
-      },
-    })
-  })
-
-  it('never puts a token hash on the wire', async () => {
-    const { handle, devices } = bench()
-    devices.issue({ deviceId: 'd1', token: 'secret', label: 'iPhone', tier: 'drive' })
-    const listed = await handle(CONTROL_ENDPOINTS.listDevices, {})
-    expect(JSON.stringify(listed)).not.toContain('hash:')
-  })
-
-  it('renames one', async () => {
-    const { handle, devices } = bench()
-    devices.issue({ deviceId: 'd1', token: 't1', label: 'iPhone', tier: 'drive' })
-    expect(await handle(CONTROL_ENDPOINTS.renameDevice, { deviceId: 'd1', label: '  Work phone  ' }))
-      .toEqual({ ok: true, value: { changed: true } })
-    expect(devices.list()[0]?.label).toBe('Work phone')
-  })
-
-  it('reports an unchanged rename rather than failing, because two panels can race', async () => {
-    const { handle } = bench()
-    expect(await handle(CONTROL_ENDPOINTS.renameDevice, { deviceId: 'gone', label: 'x' }))
-      .toEqual({ ok: true, value: { changed: false } })
-  })
-
-  it('revokes one, and says so exactly once', async () => {
-    const onRevoke = vi.fn()
-    const { handle, devices } = bench({ onRevoke })
-    devices.issue({ deviceId: 'd1', token: 'secret', label: 'iPhone', tier: 'drive' })
-    expect(await handle(CONTROL_ENDPOINTS.revokeDevice, { deviceId: 'd1' }))
-      .toEqual({ ok: true, value: { changed: true } })
-    expect(devices.authenticate('secret')).toBeUndefined()
-    expect(onRevoke).toHaveBeenCalledExactlyOnceWith('d1')
-
-    // A second revocation changed nothing, so nothing is announced.
-    expect(await handle(CONTROL_ENDPOINTS.revokeDevice, { deviceId: 'd1' }))
-      .toEqual({ ok: true, value: { changed: false } })
-    expect(onRevoke).toHaveBeenCalledTimes(1)
-  })
-
-  it('refuses a malformed mutation', async () => {
-    const { handle } = bench()
-    for (const payload of [{}, { deviceId: 1 }, { deviceId: 'd1' }, { deviceId: 'd1', label: '   ' }]) {
-      const result = await handle(CONTROL_ENDPOINTS.renameDevice, payload)
-      expect(result.ok, JSON.stringify(payload)).toBe(false)
-      if (result.ok) continue
-      expect(result.error.code).toBe('bad-request')
-    }
-    const revoked = await handle(CONTROL_ENDPOINTS.revokeDevice, {})
-    expect(revoked.ok).toBe(false)
+  it('lists the signed-in browsers', async () => {
+    const held = bench()
+    held.browsers.issue({ browserId: 'b1', token: 't1', label: 'iPhone' })
+    const result = await held.call(CONTROL_ENDPOINTS.listBrowsers)
+    if (!result.ok) throw new Error('unreachable')
+    expect((result.value as BrowserList).browsers).toEqual([expect.objectContaining({ label: 'iPhone' })])
   })
 })
 
-describe('status', () => {
-  it('is computed fresh, so a panel left open does not go stale', async () => {
-    const { handle, devices } = bench()
-    expect(await handle(CONTROL_ENDPOINTS.readStatus, {}))
-      .toMatchObject({ ok: true, value: { paired: 0 } })
-    devices.issue({ deviceId: 'd1', token: 't1', label: 'iPhone', tier: 'drive' })
-    expect(await handle(CONTROL_ENDPOINTS.readStatus, {}))
-      .toMatchObject({ ok: true, value: { paired: 1, urls: ['http://100.101.5.7:3081/'] } })
+describe('writes', () => {
+  it('passes a narrowed patch through and answers with the section', async () => {
+    const held = bench()
+    const result = await held.call(CONTROL_ENDPOINTS.writeConfig, { enabled: false })
+    expect(result.ok).toBe(true)
+    expect(held.writes).toEqual([{ enabled: false }])
   })
-})
 
-describe('the channel itself', () => {
-  it('refuses an endpoint it does not own', async () => {
-    const { handle } = bench()
-    const result = await handle('pair/steal', {})
+  it('carries the seam\'s refusal back as a message a person can read', async () => {
+    const held = bench({ refusal: 'port 3081 is already held' })
+    const result = await held.call(CONTROL_ENDPOINTS.writeConfig, { port: 3081 })
+    if (result.ok) throw new Error('unreachable')
+    expect(result.error.message).toBe('port 3081 is already held')
+  })
+
+  it('refuses an empty write rather than storing nothing loudly', async () => {
+    const result = await bench().call(CONTROL_ENDPOINTS.writeConfig, {})
     expect(result.ok).toBe(false)
-    if (result.ok) return
-    expect(result.error.code).toBe('bad-request')
-    expect(result.error.message).toContain('pair/steal')
+  })
+})
+
+describe('browsers', () => {
+  it('signs one out', async () => {
+    const held = bench()
+    held.browsers.issue({ browserId: 'b1', token: 't1', label: 'iPhone' })
+    const result = await held.call(CONTROL_ENDPOINTS.revokeBrowser, { browserId: 'b1' })
+    if (!result.ok) throw new Error('unreachable')
+    expect((result.value as Mutation).changed).toBe(true)
+    expect(held.browsers.authenticate('t1')).toBeUndefined()
+  })
+
+  it('reports a miss rather than throwing, so two cards can race', async () => {
+    const result = await bench().call(CONTROL_ENDPOINTS.revokeBrowser, { browserId: 'nobody' })
+    if (!result.ok) throw new Error('unreachable')
+    expect((result.value as Mutation).changed).toBe(false)
+  })
+
+  it('needs a browserId', async () => {
+    const result = await bench().call(CONTROL_ENDPOINTS.revokeBrowser, {})
+    expect(result.ok).toBe(false)
+  })
+
+  it('signs every one of them out at once, and says how many', async () => {
+    const held = bench()
+    held.browsers.issue({ browserId: 'b1', token: 't1', label: 'iPhone' })
+    held.browsers.issue({ browserId: 'b2', token: 't2', label: 'Mac' })
+    const result = await held.call(CONTROL_ENDPOINTS.revokeAllBrowsers)
+    if (!result.ok) throw new Error('unreachable')
+    expect((result.value as RevokeAll).removed).toBe(2)
+    expect(held.browsers.authenticate('t1')).toBeUndefined()
+    expect(held.browsers.authenticate('t2')).toBeUndefined()
+  })
+
+  it('does not ask for a confirmation of its own', async () => {
+    // The card asks, twice. A channel that second-guessed its caller would be a
+    // channel with a second policy in it.
+    const result = await bench().call(CONTROL_ENDPOINTS.revokeAllBrowsers)
+    if (!result.ok) throw new Error('unreachable')
+    expect((result.value as RevokeAll).removed).toBe(0)
+  })
+})
+
+describe('the access log', () => {
+  it('answers what happened at the door, newest first', async () => {
+    const held = bench()
+    held.access.refused({ label: 'Browser', address: '198.51.100.4' })
+    held.clock.now += 1_000
+    held.access.granted({ label: 'iPhone', address: '203.0.113.9', browserId: 'b1' })
+    const result = await held.call(CONTROL_ENDPOINTS.readAccess)
+    if (!result.ok) throw new Error('unreachable')
+    const view = result.value as AccessView
+    expect(view.events.map(event => event.granted)).toEqual([true, false])
+    expect(view.unseen).toBe(2)
+  })
+
+  it('marks it read, and the count starts again', async () => {
+    const held = bench()
+    held.access.granted({ label: 'iPhone', address: '203.0.113.9', browserId: 'b1' })
+    const acked = await held.call(CONTROL_ENDPOINTS.ackAccess)
+    if (!acked.ok) throw new Error('unreachable')
+    expect((acked.value as AccessView).unseen).toBe(0)
+
+    held.clock.now += 1_000
+    held.access.granted({ label: 'Mac', address: '198.51.100.4', browserId: 'b2' })
+    const after = await held.call(CONTROL_ENDPOINTS.readAccess)
+    if (!after.ok) throw new Error('unreachable')
+    expect((after.value as AccessView).unseen).toBe(1)
+  })
+})
+
+describe('the passcode', () => {
+  it('mints a new one and hands it back', async () => {
+    const result = await bench().call(CONTROL_ENDPOINTS.resetPasscode)
+    if (!result.ok) throw new Error('unreachable')
+    expect((result.value as PasscodeState).passcode).toBe('NEWPASSCODE')
+  })
+
+  it('does NOT sign anybody out', async () => {
+    // The passcode is how you get in, not what keeps you in. Conflating the two
+    // would mean every reset signs out the laptop you are holding.
+    const held = bench()
+    held.browsers.issue({ browserId: 'b1', token: 't1', label: 'iPhone' })
+    await held.call(CONTROL_ENDPOINTS.resetPasscode)
+    expect(held.browsers.authenticate('t1')).toBeDefined()
+  })
+})
+
+describe('unknown endpoints', () => {
+  it('are refused by name', async () => {
+    const result = await bench().call('nothing/here')
+    if (result.ok) throw new Error('unreachable')
+    expect(result.error.message).toContain('nothing/here')
+  })
+})
+
+describe('parsePatch', () => {
+  it('takes each editable field at its own type', () => {
+    expect(parsePatch({ enabled: true, publicHost: ' x.example ', port: 80, allowInsecure: true, sessionTtlDays: 7 }))
+      .toEqual({ enabled: true, publicHost: 'x.example', port: 80, allowInsecure: true, sessionTtlDays: 7 })
+  })
+
+  it('REFUSES to carry a field that is not editable', () => {
+    // The section also holds the passcode and the browser table; a write that
+    // reached those could install a session token hash of its own choosing.
+    expect(parsePatch({ passcode: 'MINE', browsers: { b: {} }, enabled: true }))
+      .toEqual({ enabled: true })
+  })
+
+  it('names the type it wanted', () => {
+    expect(parsePatch({ enabled: 'yes' })).toMatch(/boolean/)
+    expect(parsePatch({ port: 'eighty' })).toMatch(/number/)
+    expect(parsePatch({ publicHost: 7 })).toMatch(/string/)
+    expect(parsePatch({ sessionTtlDays: -1 })).toMatch(/days/)
+    expect(parsePatch(null)).toMatch(/object/)
+  })
+
+  it('refuses a port outside the range a socket can hold', () => {
+    expect(parsePatch({ port: 0 })).toMatch(/between 1 and 65535/)
+    expect(parsePatch({ port: 70000 })).toMatch(/between 1 and 65535/)
+  })
+})
+
+describe('checkPublicHost', () => {
+  it('accepts a bare host or address, and empty', () => {
+    expect(checkPublicHost('')).toBeUndefined()
+    expect(checkPublicHost('121.43.252.12')).toBeUndefined()
+    expect(checkPublicHost('harness.example.com')).toBeUndefined()
+    expect(checkPublicHost('[2001:db8::1]')).toBeUndefined()
+  })
+
+  it('ACCEPTS a whole URL, which is how you say "I am reached there, not here"', () => {
+    expect(checkPublicHost('http://121.43.252.12:7860')).toBeUndefined()
+    expect(checkPublicHost('https://dsh.example.com')).toBeUndefined()
+    expect(checkPublicHost('https://dsh.example.com/')).toBeUndefined()
+  })
+
+  it('refuses a port on a BARE address, which would disagree with the port field', () => {
+    // Somebody who means a port is writing a URL; a bare address with one would
+    // show a number on the card that the listener does not hold.
+    expect(checkPublicHost('121.43.252.12:7860')).toMatch(/whole URL/)
+  })
+
+  it('refuses a path, because this forward serves an origin rather than a subdirectory', () => {
+    expect(checkPublicHost('example.com/dsh')).toMatch(/no path/)
+    expect(checkPublicHost('https://dsh.example.com/harness')).toMatch(/subdirectory/)
+  })
+
+  it('refuses a scheme it cannot stand behind, and credentials in the URL', () => {
+    expect(checkPublicHost('ftp://dsh.example.com')).toMatch(/http or https/)
+    expect(checkPublicHost('https://me:secret@dsh.example.com')).toMatch(/credentials/)
+  })
+
+  it('refuses a query or a fragment', () => {
+    expect(checkPublicHost('https://dsh.example.com/?a=1')).toMatch(/query/)
+  })
+
+  it('refuses a space', () => {
+    expect(checkPublicHost('a b')).toMatch(/space/)
   })
 })

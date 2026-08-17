@@ -1,56 +1,94 @@
 /**
- * The three random or one-way values this plugin mints, and the only module
- * that reaches `node:crypto`.
+ * The random and one-way values this plugin mints, and the only module that
+ * reaches `node:crypto`.
  *
- * Separated so `pairing.ts`, `devices.ts`, `gate.ts`, and `bind.ts` — the four
- * files that carry the whole of this plugin's security — import nothing at all
- * and can be decided entirely by tests. Randomness and clocks are handed to
- * them; this is where the real ones come from.
+ * Separated so `browsers.ts`, `throttle.ts` and `gate.ts` — the files that
+ * carry the whole of this plugin's security — import nothing at all and can be
+ * decided entirely by tests. Randomness and clocks are handed to them; this is
+ * where the real ones come from.
  * @module @omdsh-plugins/omdsh-remctrl/secrets
  */
 
-import { createHash, randomBytes, randomInt, randomUUID } from 'node:crypto'
+import { createHash, randomBytes, randomInt, randomUUID, timingSafeEqual } from 'node:crypto'
+import { PASSCODE_ALPHABET, PASSCODE_LENGTH } from './contract.ts'
 
 /**
- * Digits in a pairing code.
+ * Mint one passcode.
  *
- * Six, which is 20 bits and would be embarrassing on its own. It is not on its
- * own: a code lives five minutes, dies on its fifth wrong guess, and only one
- * is outstanding at a time, so the reachable guess space is five — not a
- * million. The length is chosen for a thumb on a phone keyboard, and the
- * security comes from the budget around it.
+ * `randomInt` per character rather than a modulo of random bytes: the alphabet
+ * is 32 long so a modulo would in fact be uniform here, but the property is
+ * then an accident of one constant, and this is the credential that stands
+ * between the internet and a shell on this machine. Its rejection sampling
+ * makes uniformity a fact about the function rather than about the alphabet.
+ * @param length - characters to mint; {@link PASSCODE_LENGTH} by default.
+ * @returns the passcode, in the alphabet's own case.
  */
-export const CODE_LENGTH = 6
-
-/**
- * Mint one pairing code.
- *
- * `randomInt` rather than `Math.random`: this is a credential for a five-minute
- * window, and a predictable one would let anybody on the tailnet pair
- * themselves. Its rejection sampling also keeps the digits uniform, which
- * `Math.random() * 1e6 | 0` would not quite manage.
- * @returns a zero-padded decimal string of {@link CODE_LENGTH} digits.
- */
-export function mintCode(): string {
-  return String(randomInt(0, 10 ** CODE_LENGTH)).padStart(CODE_LENGTH, '0')
+export function mintPasscode(length: number = PASSCODE_LENGTH): string {
+  const count = Math.min(32, Math.max(6, Math.floor(length)))
+  let out = ''
+  for (let index = 0; index < count; index += 1) {
+    out += PASSCODE_ALPHABET[randomInt(0, PASSCODE_ALPHABET.length)]
+  }
+  return out
 }
 
 /**
- * Mint one device token: 256 bits, base64url so it survives a header and a
- * `localStorage` round trip without escaping.
+ * One typed passcode, in the spelling {@link mintPasscode} would have used.
+ *
+ * The alphabet has no `I`, `L`, `O` or `U` precisely so those four can be
+ * folded onto what a person meant: somebody reading `0` off a screen types `O`
+ * about as often as not, and refusing them is a support question rather than a
+ * security property. Separators are dropped so a passcode written down with a
+ * dash in the middle still works.
+ * @param value - whatever was typed or pasted.
+ * @returns the canonical form.
+ */
+export function normalizePasscode(value: string): string {
+  return value
+    .toUpperCase()
+    .replace(/[^0-9A-Z]/g, '')
+    .replace(/[IL]/g, '1')
+    .replace(/O/g, '0')
+    .replace(/U/g, 'V')
+}
+
+/**
+ * Whether two secrets are equal, in time that does not depend on where they
+ * differ.
+ *
+ * A passcode comparison that returned early would leak its prefix one request
+ * at a time; the throttle bounds how fast that can be walked, but a comparison
+ * that does not leak is cheaper than an argument about how much leaking the
+ * throttle can absorb.
+ * @param left - one value.
+ * @param right - the other.
+ * @returns whether they are the same string.
+ */
+export function constantTimeEquals(left: string, right: string): boolean {
+  const a = Buffer.from(left, 'utf8')
+  const b = Buffer.from(right, 'utf8')
+  // `timingSafeEqual` throws on a length mismatch, and lengths are not secret:
+  // both sides here are fixed-length values this plugin minted.
+  if (a.length !== b.length) return false
+  return timingSafeEqual(a, b)
+}
+
+/**
+ * Mint one session token: 256 bits, base64url so it survives a `Set-Cookie`
+ * and a URL without escaping.
  * @returns the token, which the issuing response is the only place it appears.
  */
 export function mintToken(): string {
   return randomBytes(32).toString('base64url')
 }
 
-/** Mint one device id. Not a secret — it names a row the desktop panel lists. */
-export function mintDeviceId(): string {
+/** Mint one browser id. Not a secret — it names a row the desktop card lists. */
+export function mintBrowserId(): string {
   return randomUUID()
 }
 
 /**
- * Hash a device token for storage.
+ * Hash a session token for storage.
  *
  * Plain SHA-256 with no salt or stretching, and that is the right call here
  * rather than a shortcut: the input is 256 bits of uniform randomness we minted

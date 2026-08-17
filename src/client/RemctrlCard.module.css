@@ -1,0 +1,284 @@
+/*
+ * The card's own styling.
+ *
+ * Every colour is a harness token rather than a literal, so the panel follows
+ * the theme the person chose and keeps following it when the theme changes.
+ * The one exception is the danger paragraph, which needs to look like a warning
+ * in both themes and reaches for the harness's own danger token to do it.
+ */
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 620;
+}
+
+.muted {
+  margin: 0;
+  color: var(--dsh-text-muted, #777);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.bad {
+  margin: 0;
+  color: var(--dsh-color-danger, #b42318);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+/*
+ * The sentence next to the switch, once it is on.
+ *
+ * Loud on purpose. It is the only place that says what a passcode is holding,
+ * and somebody scrolling past a card of settings should not be able to miss it.
+ */
+.danger {
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--dsh-color-danger, #b42318) 32%, transparent);
+  background: color-mix(in srgb, var(--dsh-color-danger, #b42318) 8%, transparent);
+  color: var(--dsh-text-primary, inherit);
+  font-size: 0.85rem;
+  line-height: 1.55;
+}
+
+.switchRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.switchText {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.toggleOn,
+.toggleOff {
+  flex: none;
+  padding: 0.4rem 0.9rem;
+  border-radius: 0.45rem;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 560;
+  cursor: pointer;
+}
+
+.toggleOn {
+  border: 1px solid color-mix(in srgb, var(--dsh-color-danger, #b42318) 45%, transparent);
+  background: transparent;
+  color: var(--dsh-color-danger, #b42318);
+}
+
+.toggleOff {
+  border: 1px solid transparent;
+  background: var(--dsh-color-accent, #2b6cb0);
+  color: var(--dsh-color-accent-contrast, #fff);
+}
+
+.toggleOn:disabled,
+.toggleOff:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.quiet {
+  flex: none;
+  padding: 0.28rem 0.6rem;
+  border: 1px solid var(--dsh-border-subtle, #ddd);
+  border-radius: 0.4rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.quiet:hover {
+  background: var(--dsh-surface-hover, rgb(0 0 0 / 4%));
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.fieldLabel {
+  font-size: 0.8rem;
+  font-weight: 560;
+  color: var(--dsh-text-secondary, inherit);
+}
+
+.fieldBody {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.input,
+.port {
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--dsh-border-subtle, #ddd);
+  border-radius: 0.4rem;
+  background: var(--dsh-surface-input, transparent);
+  color: inherit;
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.port {
+  width: 7rem;
+}
+
+/*
+ * The address and the sign-in link both hold values with no spaces in them, and
+ * a trycloudflare hostname is four words long. Wrapping anywhere is what keeps
+ * the card from growing a horizontal scrollbar in a narrow settings pane.
+ */
+.url,
+.code,
+.passcode {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.85rem;
+}
+
+.url {
+  color: var(--dsh-color-accent, #2b6cb0);
+}
+
+.code {
+  font-family: var(--dsh-font-mono, ui-monospace, monospace);
+  color: var(--dsh-text-secondary, inherit);
+}
+
+.passcode {
+  padding: 0.15rem 0.45rem;
+  border-radius: 0.3rem;
+  background: var(--dsh-surface-raised, rgb(0 0 0 / 5%));
+  font-family: var(--dsh-font-mono, ui-monospace, monospace);
+  font-size: 1rem;
+  letter-spacing: 0.14em;
+}
+
+.check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.checkText {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.warnings {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.warn {
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--dsh-color-warning, #9a6700);
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.rowText {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.label {
+  font-size: 0.88rem;
+  font-weight: 560;
+}
+
+.tag {
+  padding: 0.05rem 0.35rem;
+  border-radius: 0.25rem;
+  background: color-mix(in srgb, var(--dsh-color-danger, #b42318) 14%, transparent);
+  color: var(--dsh-color-danger, #b42318);
+  font-size: 0.72rem;
+}
+
+/* The unseen count next to the log's heading. Loud enough to notice on a card
+   somebody opened for another reason, which is the only time it will be read. */
+.badge {
+  margin-left: 0.45rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 0.7rem;
+  background: var(--dsh-color-accent, #2b6cb0);
+  color: var(--dsh-color-accent-contrast, #fff);
+  font-size: 0.72rem;
+  font-weight: 560;
+  vertical-align: middle;
+}
+
+.confirmRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.danger-button {
+  padding: 0.28rem 0.6rem;
+  border: 1px solid color-mix(in srgb, var(--dsh-color-danger, #b42318) 45%, transparent);
+  border-radius: 0.4rem;
+  background: color-mix(in srgb, var(--dsh-color-danger, #b42318) 10%, transparent);
+  color: var(--dsh-color-danger, #b42318);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 560;
+  cursor: pointer;
+}

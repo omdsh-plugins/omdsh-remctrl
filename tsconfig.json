@@ -3,11 +3,8 @@
     "target": "es2024",
     "module": "esnext",
     "moduleResolution": "bundler",
-    // M0 has no browser half, so the DOM is not in scope and a `node:` import
-    // cannot leak anywhere it must not go. When the desktop pairing panel
-    // lands, this grows the DOM libs and tsdown grows a purity gate — see the
-    // sibling plugins for the shape that boundary takes.
-    "lib": ["ES2024"],
+    "jsx": "react-jsx",
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
     "declaration": true,
     "sourceMap": true,
     "declarationMap": true,
@@ -25,6 +22,9 @@
     "noFallthroughCasesInSwitch": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
+    // The node half imports node:http and node:os; the browser half never
+    // does, and the client bundle's purity gate in tsdown.config.ts is what
+    // keeps that true rather than this list.
     "types": ["node"],
     "rootDir": "src",
     "outDir": "lib/types"

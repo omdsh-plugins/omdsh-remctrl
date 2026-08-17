@@ -1,7 +1,7 @@
 {
   "name": "@omdsh-plugins/omdsh-remctrl",
-  "description": "Remote control for the DeepSeek Harness: a second front door on its own port, behind device pairing and a tiered method allowlist, so a phone on your tailnet can watch a session, approve what it asks for, and hand it new work",
-  "version": "0.1.0",
+  "description": "Remote control for the DeepSeek Harness: puts its own interface on a public address behind a passcode, over a cloudflared tunnel by default, so the window you reach from a phone is the window you left open",
+  "version": "0.2.0",
   "type": "module",
   "license": "MIT",
   "repository": {
@@ -19,6 +19,10 @@
       "types": "./lib/types/index.d.ts",
       "default": "./lib/index.js"
     },
+    "./client": {
+      "types": "./lib/types/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
     "./contract": {
       "types": "./lib/types/contract.d.ts",
       "default": "./lib/contract.js"
@@ -30,14 +34,22 @@
     "bundle": {
       "patch": "./cordis.patch.yml"
     },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-runtime"
+      ],
+      "platform": "web"
+    },
     "plughub": {
       "displayName": {
         "": "Remote Control",
-        "zh": "远程控制"
+        "zh": "\u8fdc\u7a0b\u63a7\u5236"
       },
       "summary": {
-        "": "Watch, approve, and dispatch from a phone on your tailnet.",
-        "zh": "在 tailnet 上用手机查看进度、批准工具调用、下发新任务。"
+        "": "Your dsh window, on a public address, behind a passcode.",
+        "zh": "\u628a\u4f60\u7684 dsh \u754c\u9762\u5f00\u653e\u5230\u516c\u7f51\u5730\u5740\uff0c\u524d\u9762\u6321\u4e00\u9053\u901a\u884c\u7801\u3002"
       },
       "category": "system",
       "settings": [
@@ -48,31 +60,55 @@
     }
   },
   "files": [
-    "lib/index.js",
-    "lib/contract.js",
+    "lib/*.js",
+    "lib/*.js.map",
     "lib/types/**/*.d.ts",
     "cordis.patch.yml",
     "src/**/*.ts",
+    "src/**/*.tsx",
+    "src/**/*.css",
+    "scripts/**/*.ts",
     "README.md",
     "README.zh.md",
-    "DESIGN.md",
-    "RESEARCH-harness-host-api.md"
+    "DESIGN.md"
   ],
   "scripts": {
     "build": "tsc --build tsconfig.json && tsdown",
     "typecheck": "tsc --build tsconfig.json --force && tsc --noEmit -p tsconfig.tests.json",
     "test": "vitest run",
+    "harness:local": "tsx scripts/harness-source.ts --local",
+    "harness:npm": "tsx scripts/harness-source.ts --npm",
+    "check:harness-pin": "tsx scripts/harness-source.ts --check",
     "prepare": "tsc --build tsconfig.json && tsdown"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/schemastery": ">=0.1.0-rc.6"
+    "@deepseek-ai/dsh-client-locale": ">=0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-runtime": ">=0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-slots": ">=0.1.0-rc.6",
+    "@deepseek-ai/schemastery": ">=0.1.0-rc.6",
+    "react": "^18.2.0"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-client-connection": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-locale": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-runtime": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-primitives": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-slots": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-web-react": "0.1.0-rc.6",
     "@deepseek-ai/schemastery": "3.18.1",
+    "@omdsh-plugins/omdsh-plughub": "^0.1.3",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.1.0",
     "@types/node": "^22.20.0",
+    "@types/react": "~18.3.1",
+    "jsdom": "^26.0.0",
+    "lightningcss": "^1.30.2",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
     "tsdown": "^0.22.2",
+    "tsx": "^4.22.4",
     "typescript": "^6.0.3",
     "vitest": "^4.1.8"
   }

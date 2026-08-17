@@ -7,39 +7,53 @@
 # `@deepseek-ai/dsh-base` and `@deepseek-ai/dsh-web-app` — the harness tree
 # stays exactly as it shipped, and removing the plugin removes the row with it.
 #
-# ## Why this row registers no webserver route
+# ## Why this row opens a second listener instead of registering a route
 #
 # Every other plugin in this directory hangs its routes on `ctx.webServer`.
-# This one opens its own listener instead, and that is the load-bearing
-# decision of the whole design rather than a stylistic one:
+# This one puts a listener of its own IN FRONT of that one, and the reason is
+# a fact about the harness rather than a preference:
 #
 #   - `WebServer.Config` validates its bind host against a RUNTIME schema
 #     admitting only `127.0.0.1` and `0.0.0.0`, and the web app's CLI refuses
-#     `--host 0.0.0.0` outright. The harness carrier therefore cannot be put on
-#     a tailnet address at all; a phone could never reach a route registered on
-#     it.
-#   - Even proxied, that door has `/api` behind it. The `/api` fence reads the
-#     Host header, so a reverse proxy that rewrote Host to loopback would open
-#     every privileged method — settings, credentials — to the whole tailnet
-#     and walk straight past this plugin's token gate. A second listener puts
-#     nothing but this plugin behind the door it opens, which makes that
-#     failure mode absent rather than merely unlikely.
+#     `--host 0.0.0.0` outright, in as many words: it would expose remote code
+#     execution to the network. The harness carrier therefore cannot be put
+#     anywhere a phone can reach.
+#   - It cannot, because it has no authentication of its own. Which is exactly
+#     what this plugin adds: a passcode, a session cookie, a throttle, and a
+#     transport check, all in front, and then the harness's own interface
+#     forwarded verbatim behind them.
 #
-# The row injects `connection`: the desktop pairing panel reaches the host half
-# over `ctx.connection.rpc`, a loopback-fenced channel the harness already
-# owns, so no configuration surface is exposed on the phone's door.
+# So the row does not move the harness's door. It puts a door in front of it,
+# and that door is the only thing on the public address.
 #
-# `connection` is the harness's own service, composed by the surface bundle
-# (`@deepseek-ai/dsh-web-app`), so this row belongs in a profile that has a
-# surface — which is the profile it is installed into anyway. It names no
-# service any other plugin publishes, so no companion plugin can leave it
-# pending.
+# ## What the row injects, and what it does not
+#
+# The row injects `connection`: the desktop card reaches the host half over
+# `ctx.connection.rpc` at `authority: 'loopback'`.
+#
+# It does NOT inject `webServer`, which is what the forward needs, or
+# `settings`, which is where the passcode lives. Both are taken on nested
+# `ctx.inject` calls inside `apply` instead, so a profile composing no web
+# interface gets a plugin that says there is nothing to forward rather than a
+# boot that never finishes.
 #
 # What must NOT be read into that: an entry waiting for a service nobody
 # composed does not quietly stay off. cordis's inject wait has no timeout and
 # the boot audit fails the whole app for any entry left `pending`, so adding
 # this row to a headless profile — which composes no `connection` — is a dead
 # boot, not a disabled feature.
+#
+# The browser half needs no row here at all: `dsh.client` in package.json is
+# what the shell reads to fetch `lib/client.js`, and the card it registers goes
+# into a slot `@omdsh-plugins/omdsh-plughub` declares. Install the hub and the
+# card appears; remove it and the card withdraws.
+#
+# ## The row composes nothing
+#
+# No config here, deliberately. `enabled` defaults to `false` in the schema, so
+# installing this plugin changes nothing about the machine until somebody opens
+# its card and turns it on. A composition entry that set `enabled: true` would
+# put a harness on the internet as a side effect of an install.
 
 - insert:
     - id: omdsh-remctrl

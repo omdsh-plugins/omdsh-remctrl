@@ -1,5 +1,23 @@
 # pnpm 10+ blocks any dependency shipping an install/build script until it is
-# explicitly reviewed here. This package has no runtime dependencies at all —
-# its listener, its hashing, and its randomness are `node:http`, `node:crypto`,
-# and `node:os` — so there is nothing to review.
-allowBuilds: {}
+# explicitly reviewed here.
+#
+# This package has one runtime dependency, `ssh2`, and it is loaded lazily —
+# only when somebody configures a reverse tunnel. Everything else is still
+# `node:http`, `node:crypto` and `node:os`, and the phone's page is three
+# strings. tsdown brings esbuild, whose install script fetches a platform
+# binary; denied, because tsdown resolves the same binary through its own
+# optional platform packages and a build that would otherwise be one download
+# is not worth an unreviewed script.
+allowBuilds:
+  esbuild: false
+  # ssh2's build script only compiles the optional `cpu-features` speedup; the
+  # pure-JS fallback is the supported path, and it is what the reverse tunnel
+  # uses. Denied, like everything else here that does not need to run code at
+  # install time.
+  cpu-features: false
+  ssh2: false
+
+# Every harness package is pinned to one release this plugin chose deliberately
+# (see `scripts/harness-source.ts`), so pnpm's release-age gate has nothing left
+# to protect.
+minimumReleaseAge: 0
