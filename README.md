@@ -3,131 +3,181 @@
 English | [中文](README.zh.md)
 
 Remote control for the [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness):
-a second front door on its own port, behind device pairing and a tiered method
-allowlist, so a phone on your tailnet can watch a session, approve what it asks
-for, and hand it new work.
-
-**Status: M0** — the door and the lock, and nothing behind them yet. What a
-phone can do today is pair against a running harness and see itself reported as
-paired; reading sessions, the live stream, approvals, and sending work are M1
-through M4.
-
-The design and the reasoning behind it are in [DESIGN.md](DESIGN.md); the
-harness APIs it stands on are in
-[RESEARCH-harness-host-api.md](RESEARCH-harness-host-api.md). Both are written
-in Chinese.
+turn it on and this machine's own dsh window appears at a public address, behind
+a passcode. Not a companion app and not a subset — the same sessions, the same
+buttons, the same everything, because it *is* dsh, forwarded.
 
 ## What it adds
 
 | Surface | Where it comes from |
 |---|---|
-| A second HTTP listener on port `3081`, on loopback or a tailnet address | `src/server.ts` — its own `node:http` server, never `ctx.webServer`, whose runtime schema admits only `127.0.0.1` and `0.0.0.0` |
-| A phone page that pairs and says so | `src/mobile/assets.ts` — three assets at `/`, `/app.css` and `/app.js`, none of them inline, so the page serves under a strict CSP |
-| `/pair` and `/session` | The token door: a six-digit code redeemed once, and a bearer token that proves the device from then on |
-| A loopback-only control channel — mint, read, list, rename, revoke, status | `ctx.connection.rpc.handle(…, { authority: 'loopback' })`, so the fence around the controls is the harness's rather than one written here |
-| The `omdsh-remctrl` settings namespace | `ctx.inject(['settings'])`, holding the bind, the pairing budgets, and the device table as token hashes |
+| A second listener, in front of the harness's own | A `node:http` server this plugin binds; the harness's `webServer` never moves |
+| The whole interface, at a public address | An HTTP and WebSocket reverse proxy to `127.0.0.1:<webServer.port>` |
+| A passcode form at any path | The gate's own page, served in place of the app until a browser signs in |
+| A session cookie | `HttpOnly; SameSite=Lax`, `Secure` under the tunnel; the only credential a foreign web app carries by itself |
+| An `https://` address with no setup | A supervised `cloudflared` quick tunnel, spawned as a child process |
+| One card in the Plugin hub | An entry in `omdsh.plugin.card`, `@omdsh-plugins/omdsh-plughub`'s slot |
+| The switch, the passcode, the browser list, the door's log | `ctx.connection.rpc` at `authority: 'loopback'` |
 
-Milestone by milestone:
+## One way in
 
-- ✅ Its own HTTP listener, with a bind policy that **cannot** be configured onto a public interface
-- ✅ Pairing: a six-digit code, one outstanding at a time, five minutes, five guesses
-- ✅ Device tokens, stored as hashes, surviving a restart, revocable
-- ✅ A loopback-only control channel for the desktop: mint, read, list, rename, revoke, status
-- ✅ A phone page that pairs and says so
-- ⬜ Reading sessions, the live stream, approvals, sending work — M1 through M4
+There is a single door and it is a reverse proxy. Requests arrive on a port this
+plugin binds, the passcode decides whether they go any further, and the ones that
+do are handed to the harness's own loopback port — HTTP and both WebSocket
+downlinks, verbatim.
 
-**There is no desktop pairing panel yet.** The control channel is registered and
-answers; nothing in the GUI calls it. So the only way in at M0 is the pairing
-code printed at boot — and that line appears only while nothing is paired, which
-means that after the first device there is no in-app way to mint a second code
-until the panel lands.
+How that port becomes reachable is the only choice you have, and it has a
+default:
 
-## Reaching it
+- **Leave `publicHost` empty.** `cloudflared` opens an outbound quick tunnel and
+  hands back an `https://….trycloudflare.com` name. Nothing to forward, no
+  firewall to open, no certificate to arrange. This is the case for every laptop,
+  and it is what happens if you change nothing but the switch.
+- **Set `publicHost`** when this machine already has a public address —
+  `121.43.252.12`, `harness.example.com`. The door binds every interface and
+  people reach it directly. That is plain HTTP, so it stays shut until you set
+  `allowInsecure` by hand.
 
-Two deployments, both over Tailscale, neither over the public internet.
+Nothing else is configurable, because nothing else needs to be.
 
-**Plain HTTP over WireGuard.** Set `bindHost` to one of this machine's tailnet
-addresses and open `http://100.x.y.z:3081/` on the phone. Nothing to configure
-beyond Tailscale being up. No TLS, so no PWA and no push.
+## What the passcode is holding
 
-**TLS, via `tailscale serve`.** Leave `bindHost` at `127.0.0.1` and run:
+Everything.
 
-```sh
-tailscale serve --bg --https=443 http://127.0.0.1:3081
-```
+An earlier version of this plugin served a small purpose-built app through a
+method allowlist, at a tier the desktop chose, and could honestly say a phone was
+less powerful than the desktop. Forwarding the real interface ends that promise,
+and ends it deliberately: the proxy rewrites the `Host` header to loopback, which
+is what makes the harness's own trust fence pass, and which means a signed-in
+browser reaches every loopback-fenced method the desktop can — settings,
+credentials, tool approvals, a shell.
 
-Tailscale terminates TLS with a real Let's Encrypt certificate for
-`<node>.<tailnet>.ts.net`, so the phone can install the page as a PWA and — from
-M4 — receive push. Requires HTTPS and MagicDNS enabled for the tailnet.
+So the controls around the passcode are not features. They are the design:
 
-**Never enable Tailscale Funnel on this port.** Funnel is the one switch that
-puts it on the public internet.
+1. **Off by default.** `enabled` is `false`. Installing this plugin changes
+   nothing about the machine until somebody opens its card and turns it on.
+2. **Nothing is forwarded before the cookie resolves.** Not the index, not an
+   asset, not a WebSocket handshake. A signed-out browser reaches the passcode
+   form and two files, and that is the whole of the public surface.
+3. **Six tries a minute, per address.** A ten-character passcode is fifty bits,
+   which is not a key — it is a passcode with a token bucket in front of it, and
+   the bucket is what makes ten characters enough to type on a phone.
+4. **The provenance fence, re-imposed at the public boundary.** The harness
+   refuses cross-site requests and mismatched `Origin`s, and rewriting `Host`
+   upstream would remove its copy of that check — so the gate asks the same three
+   questions first, about the address the browser actually used.
+5. **A transport check.** Under the tunnel a request that did not arrive over
+   HTTPS is refused with `421` *before* a credential is read off it, so a
+   misconfigured carrier is one refusal rather than a session cookie in the clear.
+
+A sixth thing follows from the shape rather than being added to it: the controls
+ride `ctx.connection.rpc` at `authority: 'loopback'`, so they are the harness's
+fence and not one written here. That fence now admits a signed-in browser too —
+by design, and it cuts the useful way as often as not, because you can turn
+remote control off from the phone you left the building with.
+
+## Signing in
+
+The card shows three things: the address, a link with the passcode already on it,
+and the passcode itself.
+
+Send the link to your phone and tap it. The gate takes the passcode off the
+query, sets the cookie, and redirects to the same URL without it — so it is gone
+from the address bar, though not from that browser's history, which is what a
+magic link costs. Type the passcode instead if you would rather; case does not
+matter and neither do dashes, and the alphabet has no `I`, `L`, `O` or `U` in it
+so nothing is ambiguous on a screen.
+
+A browser stays signed in for `sessionTtlDays`. The card lists every one that is,
+signs any of them out at once, and signs out all of them together behind a
+two-step confirmation. Minting a new passcode changes only the way
+*in* — browsers already signed in stay signed in, because a passcode read over
+your shoulder and a phone left in a taxi are different problems with different
+answers.
+
+## What happened at the door
+
+The card keeps a log of it: every sign-in that worked, and every one that did
+not, with the address it came from. A grant also prints a line the moment it
+happens — `a new browser signed in — iPhone from 203.0.113.9` — so a terminal
+that is open says it out loud.
+
+A record rather than a notification, and the distinction is the point: a
+notification reaches whoever is looking, and the case worth catching is the one
+nobody was looking at. The log survives a restart, holds the last 50 events, and
+carries a count of what is new since you last read it.
+
+Failed attempts from one address fold into a single row with a count on it —
+otherwise a machine grinding at the passcode, throttled to six a minute, would
+still push every real event out of a bounded log inside ten minutes. Nothing is
+said out loud until the sixth failure from an address, which is the point at
+which it stops looking like somebody mistyping and its throttle budget is spent.
+
+## On a phone
+
+The harness's interface has no width media query anywhere in it. What it does
+have is one breakpoint in JavaScript: below 1024px it collapses the sidebar to a
+56px rail, so a phone already gets a rail plus a conversation rather than three
+columns fighting over 390px.
+
+Two things it does not handle, and this plugin adds both — to the forwarded copy
+only, never to the window on your desk:
+
+- **The keyboard.** The harness sizes itself at `height: 100%`, which on iOS
+  resolves against the layout viewport — and the layout viewport does not shrink
+  when the on-screen keyboard appears, so the composer ends up behind it with no
+  page scroll to reach it. A few lines of script publish `visualViewport` as a
+  custom property and the app is sized from that instead.
+- **The expanded sidebar.** Tapping the rail re-expands it to 280px and leaves
+  the conversation about 110px wide. On a narrow viewport it overlays the
+  conversation instead of taking a track from it.
+
+Both hang off `data-shell-overlay` and `data-sidebar-collapsed`, the two
+attributes the harness's frame writes deliberately — never a CSS-module class,
+every one of which is a build hash. A harness that stopped writing them leaves
+the page exactly as it ships rather than broken.
 
 ## Configuration
 
-Settings namespace `omdsh-remctrl`, editable from `omdsh-plughub`.
+Everything lives in the `omdsh-remctrl` settings namespace, and the card in the
+Plugin hub is the form for it. Five fields, of which most people touch one.
 
-| Field | Default | What it does |
-| --- | --- | --- |
-| `enabled` | `true` | Whether the door opens at all |
-| `bindHost` | `127.0.0.1` | Loopback, or a tailnet address this machine holds |
-| `port` | `3081` | The phone's port — not the harness's `3080` |
-| `defaultTier` | `drive` | What a newly paired device may do |
-| `pairingTtlSeconds` | `300` | How long a code lives |
-| `maxPairingAttempts` | `5` | Wrong guesses a code survives |
-| `devices` | — | Written by the plugin; holds token hashes, never tokens |
+| Field | Default | What it is |
+|---|---|---|
+| `enabled` | `false` | The switch. Nothing listens until it is on. |
+| `publicHost` | `''` | The address people reach this machine at, if it has one. Empty means `cloudflared` fetches one. No scheme, no port. |
+| `port` | `3081` | The port the door listens on — not the harness's own. |
+| `allowInsecure` | `false` | Serve a `publicHost` over plain HTTP. Required before one will open at all. |
+| `sessionTtlDays` | `30` | How long a signed-in browser stays signed in. `0` means forever. |
 
-Every field is `applies: 'live'`. Moving `bindHost`, `port` or `enabled` rebinds
-the listener where it stands; a tier change and a revocation are in force on the
-next request. Nothing here asks for a restart.
-
-Two behaviours are worth knowing before editing:
-
-- **A `bindHost` this machine does not hold is refused as you save it**, not at
-  the next boot. The namespace validates a write by running the same bind policy
-  the listener runs, so a laptop whose Tailscale is down cannot store an address
-  it would then fail to listen on — the panel reports the refusal and the stored
-  value stays as it was.
-- **The device table is authoritative in memory.** Mirroring it back into
-  settings can fail — a read-only provider, a disk that will not take the write —
-  and when it does, this plugin logs a line and carries on: pairings hold until
-  the process ends rather than taking the whole agent host down with them.
-
-### Tiers
-
-Each admits everything below it.
-
-| Tier | May |
-| --- | --- |
-| `observe` | List and read sessions, subagents, workspaces, skills, presets |
-| `respond` | …and cancel a run or interrupt a subagent |
-| `drive` | …and send messages, steer, edit the queue, start and rename sessions |
-| `full` | …and fork, pick models, edit workspaces and goals |
-
-`cancel` sits in `respond` rather than `drive` on purpose: somebody trusted to
-watch a run should be able to end one going wrong without being trusted to
-launch another.
+Three more are written by the plugin: `passcode`, minted the first time you turn
+it on and declared `.role('secret')`; `browsers`, which holds a hash of each
+session token and never a token; and `access`, the door's log.
 
 ## Install
 
 ```sh
-dsh plugin --profile web add @omdsh-plugins/omdsh-remctrl
+npx @omdsh-plugins/omdsh-plughub add omdsh-remctrl
 ```
 
-Or from a checkout, which is what M0 wants:
+That is the [plugin hub](https://github.com/omdsh-plugins/omdsh-plughub)'s own
+installer with argv instead of a button. It resolves this plugin through the
+collection's [registry](https://github.com/omdsh-plugins/registry), installs it
+from its GitHub repository, and writes the pnpm build-allowlist entry — which a
+bare `dsh plugin add github:…` leaves to you, and which carries a commit hash
+pnpm resolves, so it can only be copied out of an error message afterwards.
+
+`dsh plugin --profile web add @omdsh-plugins/omdsh-remctrl` is **not** that
+command yet: this package is not on npm, and pnpm answers
+`ERR_PNPM_FETCH_404`. The same install is also a button, on this plugin's card
+under **Settings → Plugins → Plugin hub**, whenever the hub is already in the
+profile.
+
+Or from a checkout, which is what an unpublished build wants:
 
 ```sh
 pnpm install && pnpm run build
 dsh plugin --profile web add "$PWD"
-```
-
-Then `dsh web`. Boot prints where to point a phone, and — only when nothing is
-paired yet — a code to get in with:
-
-```
-omdsh-remctrl: listening on 127.0.0.1:3081; nothing off this machine can reach it yet.
-omdsh-remctrl: put Tailscale in front of it — `tailscale serve --bg --https=443 http://127.0.0.1:3081` — …
-omdsh-remctrl: no device is paired yet; pairing code 483212, good for 300s.
 ```
 
 Remove it the same way:
@@ -136,55 +186,49 @@ Remove it the same way:
 dsh plugin --profile web remove @omdsh-plugins/omdsh-remctrl
 ```
 
-**What it needs from a profile.** One harness service: `connection`, which
-carries the loopback control channel the desktop controls will call. The web
-surface bundle composes it, so this row belongs in a profile that has a surface —
-the one the line above installs it into. cordis waits for an injected service
-forever and the boot audit fails the app for any entry left `pending`, so a
-headless profile, which composes no `connection`, must not carry this row: that
-is a dead boot rather than a quiet no-op.
+`cloudflared` is not bundled and is not installed for you. On macOS:
+`brew install cloudflared`; otherwise see
+[Cloudflare's downloads](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/).
+The card says so when it is missing, and a machine with a `publicHost` never
+needs it.
 
-No service published by another plugin appears in this plugin's `inject`, and
-none is needed. There is no companion to install beside it and nothing here that
-goes dark because one is missing — the rule, and why it is a rule, is in
-[CONVENTIONS.md](https://omdsh-plugins.github.io/conventions/?lang=en#rule-9).
-Removing the row takes the listener, the control channel and the settings
-namespace with it, and leaves the rest of the profile exactly as it was.
-
-Settings are additive, the way that convention asks. With no settings provider
-composed — a test bench, a hand-built tree — the door still opens on whatever
-the profile's patch entry configured, and the device table lives in memory only:
-a phone paired against it pairs again after a restart. `dsh web` composes one,
-so in the deployment above the table is durable and the rest is editable.
+The off states, per CONVENTIONS rule 9. Without
+`@omdsh-plugins/omdsh-plughub` the card has no slot to sit in and withdraws;
+every value stays editable through the hub's generic form or the settings file.
+Without a `webServer` — a TUI profile — there is no interface to forward, and the
+plugin says so instead of opening a door onto nothing. Without `settings` the
+passcode and the signed-in browsers live in memory until restart. A `remove`
+leaves the settings section behind, so reinstalling keeps the passcode.
 
 ## Commands
 
 ```sh
 pnpm install
-pnpm run build
+pnpm run build        # tsdown bundles the host and browser halves
 pnpm run typecheck
-pnpm test          # 95 specs, and no harness checkout needed
+pnpm run test
+pnpm run harness:local   # point the harness dependencies at a local checkout
+pnpm run harness:npm     # point them back at the published versions
+pnpm run check:harness-pin
 ```
-
-The four files carrying the whole of this plugin's security — `bind.ts`,
-`gate.ts`, `pairing.ts`, `devices.ts` — import nothing and take their clock,
-their randomness, and their hash as arguments, so their behaviour is decided by
-tests rather than by the machine running them.
 
 ## Known limitations
 
-- **It will not listen on a public interface.** `bindHost` accepts loopback or
-  an address this machine holds inside `100.64.0.0/10`, and nothing else. There
-  is no override flag. A LAN address is refused; `0.0.0.0` is refused; a tailnet
-  address belonging to another machine is refused. A refusal is printed at boot
-  and the door stays shut.
-- **It will not expose the configuration plane.** No `settings.*`, no
-  `credentials.*`, no `host.*`, no `llm.*`, and no `agentPreset.openDocument` —
-  as whole domains, at every tier, including `full`. A preset can be listed and
-  read; the document behind it never opens. The method table is an allowlist and
-  absence means no.
-- **It will not put `/api` behind its door.** The harness carrier keeps its own
-  port and its own fence; this listener serves this plugin and nothing else.
-- **The pairing code is a boot line, not a control.** Until the desktop panel
-  lands, the code is minted once, while nothing is paired; a second device has
-  to wait for a restart of a harness with no devices on it, or for M1.
+- **A signed-in browser is the desktop.** There are no tiers and no read-only
+  mode. That is what forwarding the real interface means, and it is why the
+  passcode is the whole of the security.
+- **A quick tunnel's hostname changes on every restart.** Cloudflare's
+  account-less tunnels are ephemeral and carry no uptime guarantee, so the card
+  shows the current address rather than a saved one, and a link you sent
+  yesterday will not work today. A named tunnel is not supported yet.
+- **Everything crosses Cloudflare.** Under the default carrier the TLS is
+  theirs, so the traffic is in the clear on their side of it. `publicHost` with
+  your own reverse proxy in front is the answer if that matters.
+- **The details pane is unreachable on a phone.** The harness's column solver
+  closes it whenever the conversation would fall below 640px, which is always on
+  a phone, and nothing in the forwarded DOM distinguishes "closed because it
+  does not fit" from "closed because you closed it".
+- **The phone stylesheet is unverified on hardware.** It is written from the
+  harness's own layout source and covered by tests that read it, not by a device.
+- **One tunnel, one door.** Two harnesses on one machine need two ports, set by
+  hand; nothing here discovers a free one.
