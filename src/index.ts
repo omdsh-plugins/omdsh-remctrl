@@ -186,18 +186,40 @@ export interface RemctrlConfig {
 }
 
 /** The schema, which is what makes any of the above configurable at all. */
+/**
+ * One field's title, in both languages.
+ *
+ * `omdsh-plughub` titles a control from `meta.extra.label` when a schema wrote
+ * one and from the property name when it did not — and a property name is an
+ * English identifier, which is how a form in Chinese ends up half translated.
+ * A field that also carries a role declares the same map THROUGH the role:
+ * `role(text, extra)` writes this slot too, and writes `undefined` into it when
+ * called with one argument.
+ * @param en - the English title.
+ * @param zh - the Chinese title.
+ * @returns the metadata payload the hub reads.
+ */
+function label(en: string, zh: string): { label: Record<string, string> } {
+  return { label: { '': en, zh } }
+}
+
 export const Config: Schema<RemctrlConfig, Required<RemctrlConfig>> = Schema.object({
   enabled: Schema.boolean().default(false)
+    .extra('extra', label('Remote access', '开启远程访问'))
     .description('Put this harness\'s own interface on a public address. Off by default, and this is the only switch — everything below has a working default.'),
   publicHost: Schema.string().default('')
+    .extra('extra', label('Public address', '公网地址'))
     .description('Where people reach this harness, and its SHAPE says which deployment you have. EMPTY (the usual case): cloudflared opens an outbound tunnel and hands back an https address — no port forwarding, no certificate. A bare address (121.43.252.12, or a 100.x tailnet address): this process is what people reach, and it binds that address when the machine holds it. A whole URL (https://dsh.example.com, http://1.2.3.4:7860): something else carries the traffic — a reverse proxy, an ssh -R from a VPS, an frp — so the door binds loopback and the URL is what the card shows.'),
   port: Schema.natural().min(1).max(65535).default(DEFAULT_PORT)
+    .extra('extra', label('Port', '端口'))
     .description('The port the door listens on. Not the harness\'s own — this is a second socket in front of it. With no publicHost this is loopback-only and nothing outside can reach it directly.'),
   allowInsecure: Schema.boolean().default(false)
+    .extra('extra', label('Allow plain HTTP', '允许明文 HTTP'))
     .description('Serve a publicHost over plain HTTP. The session cookie grants everything this harness can do, and without TLS it crosses the internet in the clear. Required before a publicHost will open at all; leave it off and let the tunnel carry it over https.'),
   sessionTtlDays: Schema.natural().max(3650).default(DEFAULT_SESSION_TTL_DAYS)
+    .extra('extra', label('Sign-in lifetime', '登录有效期'))
     .description('How long a signed-in browser stays signed in, in days. Zero means forever — a real choice for a laptop that never leaves a desk, and the wrong one for a phone that leaves a building.'),
-  passcode: Schema.string().role('secret').default('')
+  passcode: Schema.string().role('secret', label('Passcode', '通行码')).default('')
     .description('The passcode a browser types once. Minted for you the first time this is turned on; the card shows it, and can mint another.'),
   browsers: Schema.dict(Schema.any()).default({}).hidden()
     .description('Signed-in browsers, written by this plugin. Each record holds a hash of the session token, never the token.'),
