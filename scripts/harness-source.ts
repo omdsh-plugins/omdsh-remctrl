@@ -37,7 +37,7 @@ const root = resolve(import.meta.dirname, '..')
 const PREFIX = 'harness-source'
 
 /** The harness release this plugin is pinned to when it builds from the registry. */
-const HARNESS_VERSION = '0.1.0-rc.7'
+const HARNESS_VERSION = '0.1.0-rc.8'
 
 /**
  * The framework is versioned on its own train, not the harness release's, so
@@ -62,7 +62,6 @@ const HARNESS_PACKAGES: Readonly<Record<string, string>> = {
   '@deepseek-ai/dsh-client-runtime': join('packages', 'client', 'runtime'),
   '@deepseek-ai/dsh-client-ui-primitives': join('packages', 'client', 'ui-primitives'),
   '@deepseek-ai/dsh-client-ui-slots': join('packages', 'client', 'ui-slots'),
-  '@deepseek-ai/dsh-client-web-react': join('packages', 'client', 'web-react'),
 }
 
 /** The manifest this script rewrites. */
