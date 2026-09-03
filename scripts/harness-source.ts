@@ -37,14 +37,16 @@ const root = resolve(import.meta.dirname, '..')
 const PREFIX = 'harness-source'
 
 /** The harness release this plugin is pinned to when it builds from the registry. */
-const HARNESS_VERSION = '0.1.1-rc.2'
+const HARNESS_VERSION = '0.1.2-rc.1'
 
 /**
  * The framework is versioned on its own train, not the harness release's, so
- * the pin above does not apply to it.
+ * the pin above does not apply to it. Schemastery likewise ships on the
+ * vendored library's own version line.
  */
 const OFF_TRAIN_VERSIONS: Readonly<Record<string, string>> = {
   '@deepseek-ai/cordis': '^4.0.1',
+  '@deepseek-ai/schemastery': '3.18.1',
 }
 
 /**
@@ -59,9 +61,9 @@ const HARNESS_PACKAGES: Readonly<Record<string, string>> = {
   '@deepseek-ai/cordis': join('vendor', 'cordis'),
   '@deepseek-ai/dsh-client-connection': join('packages', 'client', 'connection'),
   '@deepseek-ai/dsh-client-locale': join('packages', 'client', 'locale'),
-  '@deepseek-ai/dsh-client-runtime': join('packages', 'client', 'runtime'),
   '@deepseek-ai/dsh-client-ui-primitives': join('packages', 'client', 'ui-primitives'),
   '@deepseek-ai/dsh-client-ui-slots': join('packages', 'client', 'ui-slots'),
+  '@deepseek-ai/schemastery': join('vendor', 'schemastery'),
 }
 
 /** The manifest this script rewrites. */

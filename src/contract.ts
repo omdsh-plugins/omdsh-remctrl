@@ -421,7 +421,8 @@ export interface PasscodeState {
  * A restatement of the harness's `RpcResult`, so this package depends on no
  * harness contract package to speak on its own loopback channel.
  *
- * The shape is fixed by `@deepseek-ai/dsh-host-apiproxy/api`; only the error
+ * The shape is fixed by the harness Remote result (`RemoteResult` on
+ * `@deepseek-ai/dsh-typert-protocol`); only the error
  * `code` is loosened, from that package's closed union to `string`. Nothing
  * here mints a code outside it — `bad-request` and `internal` are the two this
  * channel uses — and the widening keeps a type-only import off the dependency
