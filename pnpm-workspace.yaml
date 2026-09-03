@@ -21,3 +21,11 @@ allowBuilds:
 # (see `scripts/harness-source.ts`), so pnpm's release-age gate has nothing left
 # to protect.
 minimumReleaseAge: 0
+
+# A git-hosted install runs `pnpm install` in an isolated store directory
+# to feed `prepare`. autoInstallPeers would then try to fetch every harness
+# peer of every harness package — including `@deepseek-ai/dsh-tools@^0.1.2`,
+# which has no matching registry release (latest is a prerelease). The
+# profile already installs with this off; the plugin's own tree must too,
+# because no setting in the profile reaches that isolated install.
+autoInstallPeers: false
