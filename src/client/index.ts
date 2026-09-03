@@ -32,6 +32,8 @@
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
+// Type-only: pulls `ctx.slots` (moved out of dsh-client-runtime onto the renderer).
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 // Type-only: the hub declares the card slot this half registers into. A VALUE
 // import of another plugin would be inlined as a second copy of its runtime;
 // the purity gate in `tsdown.config.ts` refuses one.
